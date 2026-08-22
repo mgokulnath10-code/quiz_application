@@ -1,0 +1,170 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Poppins:wght@300;400;500;600&display=swap');
+
+.register-page{
+  min-height:100vh;
+
+  display:flex;
+  justify-content:center;
+  align-items:center;
+
+  position:relative;
+
+  overflow:hidden;
+
+  background:
+  linear-gradient(
+  135deg,
+  #020617,
+  #052e16,
+  #064e3b
+  );
+
+  font-family:Poppins,sans-serif;
+}
+
+.stars{
+  position:absolute;
+  width:100%;
+  height:100%;
+
+  background-image:
+  radial-gradient(
+  white 1px,
+  transparent 1px
+  );
+
+  background-size:
+  40px 40px;
+
+  opacity:.15;
+
+  animation:
+  starsMove 30s linear infinite;
+}
+
+@keyframes starsMove{
+  from{
+    transform:
+    translateY(0);
+  }
+
+  to{
+    transform:
+    translateY(-500px);
+  }
+}
+
+.register-card{
+
+  width:450px;
+
+  padding:40px;
+
+  border-radius:30px;
+
+  backdrop-filter:blur(20px);
+
+  background:
+  rgba(255,255,255,.08);
+
+  border:
+  1px solid
+  rgba(255,255,255,.15);
+
+  box-shadow:
+  0 10px 40px
+  rgba(0,0,0,.5);
+
+  text-align:center;
+
+  z-index:10;
+}
+
+.register-card h1{
+
+  color:white;
+
+  font-family:
+  Orbitron,sans-serif;
+
+  margin-bottom:10px;
+}
+
+.register-card p{
+  color:#cbd5e1;
+  margin-bottom:25px;
+}
+
+.register-card input{
+
+  width:100%;
+
+  padding:15px;
+
+  margin-bottom:15px;
+
+  border:none;
+
+  outline:none;
+
+  border-radius:15px;
+
+  background:
+  rgba(255,255,255,.1);
+
+  color:white;
+}
+
+.register-card input::placeholder{
+  color:#cbd5e1;
+}
+
+.register-card button{
+
+  width:100%;
+
+  padding:15px;
+
+  border:none;
+
+  border-radius:15px;
+
+  cursor:pointer;
+
+  color:white;
+
+  font-weight:600;
+
+  background:
+  linear-gradient(
+  90deg,
+  #10b981,
+  #06b6d4
+  );
+
+  transition:.4s;
+}
+
+.register-card button:hover{
+
+  transform:
+  translateY(-3px);
+
+  box-shadow:
+  0 0 25px #10b981;
+}
+
+.login-link{
+  margin-top:20px;
+}
+
+.login-link a{
+
+  color:#22c55e;
+
+  text-decoration:none;
+
+  margin-left:5px;
+
+  font-weight:bold;
+}

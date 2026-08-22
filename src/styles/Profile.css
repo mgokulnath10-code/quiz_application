@@ -1,0 +1,253 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Poppins:wght@300;400;500;600&display=swap');
+
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+}
+
+.profile-page{
+
+  min-height:100vh;
+
+  padding:40px;
+
+  background:
+  linear-gradient(
+    135deg,
+    #020617,
+    #1e1b4b,
+    #312e81
+  );
+
+  display:flex;
+  justify-content:center;
+  align-items:center;
+
+  font-family:Poppins,sans-serif;
+
+  position:relative;
+}
+
+.profile-header{
+
+  position:absolute;
+
+  top:30px;
+  left:30px;
+
+  z-index:100;
+}
+
+.home-btn{
+
+  border:none;
+
+  padding:12px 24px;
+
+  border-radius:15px;
+
+  color:white;
+
+  font-size:15px;
+
+  font-weight:600;
+
+  cursor:pointer;
+
+  background:
+  linear-gradient(
+    135deg,
+    #6366f1,
+    #8b5cf6
+  );
+
+  transition:.3s;
+
+  box-shadow:
+  0 0 20px rgba(99,102,241,.4);
+}
+
+.home-btn:hover{
+
+  transform:
+  translateY(-3px);
+
+  box-shadow:
+  0 0 30px rgba(99,102,241,.7);
+}
+
+.profile-card{
+
+  width:1000px;
+
+  padding:40px;
+
+  border-radius:35px;
+
+  backdrop-filter:blur(20px);
+
+  background:
+  rgba(255,255,255,.08);
+
+  border:
+  1px solid rgba(255,255,255,.15);
+
+  color:white;
+}
+
+.avatar{
+
+  width:120px;
+  height:120px;
+
+  margin:auto;
+
+  display:flex;
+  justify-content:center;
+  align-items:center;
+
+  border-radius:50%;
+
+  font-size:60px;
+
+  background:
+  linear-gradient(
+    135deg,
+    #6366f1,
+    #06b6d4
+  );
+
+  box-shadow:
+  0 0 30px #06b6d4;
+}
+
+.profile-card h1{
+
+  text-align:center;
+
+  margin-top:20px;
+
+  font-family:Orbitron,sans-serif;
+}
+
+.email{
+
+  text-align:center;
+
+  color:#cbd5e1;
+
+  margin-bottom:30px;
+}
+
+.stats-grid{
+
+  display:grid;
+
+  grid-template-columns:
+  repeat(3,1fr);
+
+  gap:20px;
+
+  margin-bottom:40px;
+}
+
+.stat-box{
+
+  text-align:center;
+
+  padding:25px;
+
+  border-radius:20px;
+
+  background:
+  rgba(255,255,255,.08);
+}
+
+.stat-box h2{
+
+  color:#22c55e;
+
+  font-size:35px;
+}
+
+.stat-box p{
+
+  color:#cbd5e1;
+
+  margin-top:10px;
+}
+
+.history-title{
+
+  margin-bottom:20px;
+
+  font-family:Orbitron,sans-serif;
+}
+
+.history-list{
+
+  display:grid;
+
+  gap:15px;
+}
+
+.history-card{
+
+  padding:20px;
+
+  border-radius:15px;
+
+  background:
+  rgba(255,255,255,.08);
+
+  transition:.4s;
+}
+
+.history-card:hover{
+
+  transform:
+  translateX(10px);
+
+  box-shadow:
+  0 0 20px rgba(99,102,241,.4);
+}
+
+.history-card h3{
+
+  color:white;
+}
+
+.history-card p{
+
+  color:#cbd5e1;
+
+  margin-top:10px;
+}
+
+@media(max-width:768px){
+
+  .profile-page{
+    padding:20px;
+  }
+
+  .profile-card{
+    width:100%;
+    padding:25px;
+  }
+
+  .stats-grid{
+    grid-template-columns:1fr;
+  }
+
+  .profile-header{
+    top:15px;
+    left:15px;
+  }
+
+  .avatar{
+    width:90px;
+    height:90px;
+    font-size:45px;
+  }
+}

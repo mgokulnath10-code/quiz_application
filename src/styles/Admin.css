@@ -1,0 +1,144 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap');
+
+.admin-page{
+  min-height:100vh;
+  padding:40px;
+  background:linear-gradient(135deg,#0f172a,#1e293b,#312e81);
+  font-family:Poppins,sans-serif;
+}
+
+.admin-container{
+  max-width:1200px;
+  margin:auto;
+}
+
+.admin-title{
+  text-align:center;
+  color:white;
+  font-size:40px;
+  margin-bottom:30px;
+}
+
+.admin-form{
+  background:rgba(255,255,255,.08);
+  backdrop-filter:blur(20px);
+  padding:30px;
+  border-radius:20px;
+  margin-bottom:30px;
+}
+
+.admin-form input{
+  width:100%;
+  padding:15px;
+  margin-bottom:15px;
+  border:none;
+  border-radius:12px;
+  outline:none;
+}
+
+.save-btn{
+  width:100%;
+  padding:15px;
+  border:none;
+  border-radius:12px;
+  background:linear-gradient(90deg,#22c55e,#16a34a);
+  color:white;
+  font-size:18px;
+  cursor:pointer;
+}
+
+.question-card{
+  background:rgba(255,255,255,.08);
+  color:white;
+  padding:20px;
+  border-radius:15px;
+  margin-bottom:15px;
+}
+
+.delete-btn{
+  margin-top:10px;
+  border:none;
+  padding:10px 20px;
+  border-radius:10px;
+  background:#ef4444;
+  color:white;
+  cursor:pointer;
+}
+
+.admin-header{
+  display:flex;
+  justify-content:flex-start;
+  margin-bottom:20px;
+}
+
+.home-btn{
+  border:none;
+  padding:12px 24px;
+  border-radius:12px;
+
+  color:white;
+  font-size:15px;
+  font-weight:600;
+
+  cursor:pointer;
+
+  background:linear-gradient(
+    135deg,
+    #6366f1,
+    #8b5cf6
+  );
+
+  transition:.3s;
+}
+
+.home-btn:hover{
+  transform:translateY(-3px);
+
+  box-shadow:
+    0 10px 25px
+    rgba(99,102,241,.4);
+}
+
+.results-btn{
+  padding:12px 24px;
+  border:none;
+  border-radius:12px;
+  cursor:pointer;
+
+  color:white;
+  font-size:15px;
+  font-weight:600;
+
+  background:linear-gradient(
+    135deg,
+    #06b6d4,
+    #0891b2
+  );
+
+  transition:0.3s;
+}
+
+.results-btn:hover{
+  transform:translateY(-3px);
+
+  box-shadow:
+    0 10px 25px
+    rgba(6,182,212,.5);
+}
+.admin-header{
+  display:flex;
+  gap:15px;
+  margin-bottom:30px;
+}
+
+/* Add New Question Heading */
+
+.admin-form h2 {
+  color: #facc15 !important;
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  text-shadow:
+    0 0 10px rgba(250, 204, 21, 0.6),
+    0 0 20px rgba(250, 204, 21, 0.4);
+}

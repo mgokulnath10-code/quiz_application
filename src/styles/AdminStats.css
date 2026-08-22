@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&display=swap');
+
+.stats-page{
+  min-height:100vh;
+  padding:40px;
+  background:linear-gradient(135deg,#020617,#1e1b4b,#312e81);
+  color:white;
+}
+
+.stats-title{
+  text-align:center;
+  font-size:45px;
+  font-family:Orbitron,sans-serif;
+  margin-bottom:40px;
+}
+
+.stats-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+  gap:25px;
+}
+
+.stat-card{
+  padding:30px;
+  border-radius:25px;
+  text-align:center;
+  backdrop-filter:blur(15px);
+  background:rgba(255,255,255,.08);
+  transition:.4s;
+}
+
+.stat-card:hover{
+  transform:translateY(-10px);
+}
+
+.stat-card h2{
+  font-size:40px;
+  color:#22c55e;
+  margin-bottom:10px;
+}
+
+.stat-card p{
+  color:#cbd5e1;
+  font-size:18px;
+}

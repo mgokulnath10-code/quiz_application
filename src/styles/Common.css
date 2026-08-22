@@ -1,0 +1,25 @@
+.back-btn{
+  padding:12px 24px;
+  border:none;
+  border-radius:12px;
+  cursor:pointer;
+  font-size:15px;
+  font-weight:600;
+
+  color:white;
+
+  background:linear-gradient(
+    135deg,
+    #6366f1,
+    #8b5cf6
+  );
+
+  transition:0.3s;
+}
+
+.back-btn:hover{
+  transform:translateY(-3px);
+
+  box-shadow:
+  0 10px 25px rgba(99,102,241,.4);
+}
