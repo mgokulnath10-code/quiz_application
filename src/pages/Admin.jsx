@@ -26,7 +26,7 @@ function Admin() {
   const fetchQuestions = async () => {
     try {
       const res = await axios.get(
-        "http://localhost:5000/api/questions"
+        "https://brain-race.onrender.com/api/questions"
       );
 
       setQuestions(res.data);
@@ -66,7 +66,7 @@ function Admin() {
 
     try {
       await axios.post(
-        "http://localhost:5000/api/questions",
+        "https://brain-race.onrender.com/api/questions",
         {
           question,
           options: [
@@ -108,7 +108,7 @@ function Admin() {
 
     try {
       await axios.delete(
-        `http://localhost:5000/api/questions/${id}`
+        `https://brain-race.onrender.com/api/questions/${id}`
       );
 
       alert(
@@ -137,7 +137,7 @@ function Admin() {
     async () => {
       try {
         await axios.put(
-          `http://localhost:5000/api/questions/${editingId}`,
+          `https://brain-race.onrender.com/api/questions/${editingId}`,
           {
             question:
               editQuestion,

@@ -20,7 +20,7 @@ function Profile() {
   const fetchResults = async () => {
     try {
       const res = await axios.get(
-        "http://localhost:5000/api/results"
+        "https://brain-race.onrender.com/api/results"
       );
 
       const userResults = res.data.filter(

@@ -16,7 +16,7 @@ function AdminStats() {
   "dark";
   useEffect(() => {
     axios
-      .get("http://localhost:5000/api/stats")
+      .get("https://brain-race.onrender.com/api/stats")
       .then((res) => {
         setStats(res.data);
       });

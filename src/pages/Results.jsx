@@ -17,7 +17,7 @@ function Results() {
   const fetchResults = async () => {
     try {
       const res = await axios.get(
-        "http://localhost:5000/api/results"
+        "https://brain-race.onrender.com/api/results"
       );
 
       setResults(res.data);
@@ -35,7 +35,7 @@ function Results() {
 
     try {
       await axios.delete(
-        `http://localhost:5000/api/results/${id}`
+        `https://brain-race.onrender.com/api/results/${id}`
       );
 
       alert("✅ Result Deleted Successfully");

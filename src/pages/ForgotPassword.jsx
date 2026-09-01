@@ -15,7 +15,7 @@ function ForgotPassword() {
   const resetPassword = async () => {
     try {
       await axios.put(
-        "http://localhost:5000/api/reset-password",
+        "https://brain-race.onrender.com/api/reset-password",
         {
           email,
           password: newPassword,

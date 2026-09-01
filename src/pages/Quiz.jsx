@@ -143,7 +143,7 @@ useEffect(() => {
   const fetchQuestions = async () => {
     try {
       const res = await axios.get(
-        "http://localhost:5000/api/questions"
+        "https://brain-race.onrender.com/api/questions"
       );
 
       setQuestions(res.data);
@@ -165,7 +165,7 @@ useEffect(() => {
   const saveResult = async (finalScore) => {
     try {
       await axios.post(
-        "http://localhost:5000/api/results",
+        "https://brain-race.onrender.com/api/results",
         {
           user: user.name,
           score: finalScore,
