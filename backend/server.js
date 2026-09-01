@@ -22,7 +22,7 @@ mongoose
     console.log(err);
   });
 
-const users = require("./data/users");
+const User = require("./models/User");
 
 /* =====================
    HOME
@@ -36,61 +36,76 @@ app.get("/", (req, res) => {
    REGISTER
 ===================== */
 
-app.post("/api/register", (req, res) => {
-  const { name, email, password } = req.body;
+app.post("/api/register", async (req, res) => {
+  try {
+    const { name, email, password } =
+      req.body;
 
-  const newUser = {
-    id: Date.now(),
-    name,
-    email,
-    password,
-  };
+    const existingUser =
+      await User.findOne({ email });
 
-  users.push(newUser);
+    if (existingUser) {
+      return res.status(400).json({
+        message: "User already exists",
+      });
+    }
 
-  res.status(201).json({
-    message: "User Registered",
-    user: newUser,
-  });
+    const user = new User({
+      name,
+      email,
+      password,
+    });
+
+    await user.save();
+
+    res.status(201).json({
+      message: "User Registered",
+      user,
+    });
+  } catch (error) {
+    res.status(500).json(error);
+  }
 });
-
 /* =====================
    LOGIN
 ===================== */
 
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
+  try {
+    const { email, password } =
+      req.body;
 
-  const { email, password } = req.body;
+    const user =
+      await User.findOne({
+        email,
+        password,
+      });
 
-  const user = users.find(
-    (u) =>
-      u.email === email &&
-      u.password === password
-  );
-
-  if (!user) {
-    return res.status(401).json({
-      message: "Invalid Credentials"
-    });
-  }
-
-  const token = jwt.sign(
-    {
-      id: user.id,
-      email: user.email
-    },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: "7d"
+    if (!user) {
+      return res.status(401).json({
+        message: "Invalid Credentials",
+      });
     }
-  );
 
-  res.json({
-    message: "Login Successful",
-    token,
-    user
-  });
+    const token = jwt.sign(
+      {
+        id: user._id,
+        email: user.email,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: "7d",
+      }
+    );
 
+    res.json({
+      message: "Login Successful",
+      token,
+      user,
+    });
+  } catch (error) {
+    res.status(500).json(error);
+  }
 });
 
 /* =====================
@@ -124,9 +139,46 @@ app.post("/api/questions", async (req, res) => {
   }
 });
 
-app.get("/api/users", (req, res) => {
-  res.json(users);
+app.get("/api/users", async (req, res) => {
+  try {
+    const users = await User.find();
+    res.json(users);
+  } catch (error) {
+    res.status(500).json(error);
+  }
 });
+
+app.put(
+  "/api/reset-password",
+  async (req, res) => {
+    try {
+      const { email, password } =
+        req.body;
+
+      const user =
+        await User.findOne({
+          email,
+        });
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User Not Found",
+        });
+      }
+
+      user.password = password;
+
+      await user.save();
+
+      res.json({
+        message:
+          "Password Updated",
+      });
+    } catch (error) {
+      res.status(500).json(error);
+    }
+  }
+);
 
 // Get All Questions
 

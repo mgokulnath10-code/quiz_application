@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import "../styles/AdminLogin.css";
 function AdminLogin() {
@@ -48,23 +48,29 @@ function AdminLogin() {
         Admin Portal
       </h1>
 
-      <input
-        type="text"
-        placeholder="Admin Username"
-        value={username}
-        onChange={(e) =>
-          setUsername(e.target.value)
-        }
-      />
-
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) =>
-          setPassword(e.target.value)
-        }
-      />
+     <input
+  type="text"
+  placeholder="Admin Username"
+  value={username}
+  onChange={(e) => setUsername(e.target.value)}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      document.getElementById("adminPassword").focus();
+    }
+  }}
+/>
+<input
+  id="adminPassword"
+  type="password"
+  placeholder="Password"
+  value={password}
+  onChange={(e) => setPassword(e.target.value)}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      handleLogin();
+    }
+  }}
+/>
 
       <button
         className="admin-login-btn"

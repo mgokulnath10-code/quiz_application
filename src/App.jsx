@@ -21,6 +21,8 @@ import AdminLogin from "./pages/AdminLogin";
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
 
+import ForgotPassword from "./pages/ForgotPassword";
+
 function App() {
 
   return (
@@ -45,6 +47,11 @@ function App() {
             path="/register"
             element={<Register />}
           />
+
+            <Route
+  path="/forgot-password"
+  element={<ForgotPassword />}
+/>
 
           <Route
   path="/results"

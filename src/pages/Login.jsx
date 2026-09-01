@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import "../styles/Login.css";
 
 function Login() {
   const navigate = useNavigate();
-
+  const passwordRef = useRef(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] =
     useState("");
@@ -70,23 +70,34 @@ function Login() {
           Test Your Knowledge
         </p>
 
-        <input
-          type="email"
-          placeholder="Email Address"
-          value={email}
-          onChange={(e) =>
-            setEmail(e.target.value)
-          }
-        />
+       <input
+  type="email"
+  placeholder="Email Address"
+  value={email}
+  onChange={(e) =>
+    setEmail(e.target.value)
+  }
+  onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      passwordRef.current.focus();
+    }
+  }}
+/>
 
         <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) =>
-            setPassword(e.target.value)
-          }
-        />
+  ref={passwordRef}
+  type="password"
+  placeholder="Password"
+  value={password}
+  onChange={(e) =>
+    setPassword(e.target.value)
+  }
+  onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      handleLogin();
+    }
+  }}
+/>
 
         <button
           className="login-btn"
@@ -101,6 +112,14 @@ function Login() {
             Register
           </Link>
         </p>
+        <button
+  className="forgot-btn"
+  onClick={() =>
+    navigate("/forgot-password")
+  }
+>
+  🔑 Forgot Password
+</button>
 
         <button
           className="back-btn"
