@@ -12,24 +12,27 @@ function Register() {
     useState("");
 
   const handleRegister = async () => {
-    try {
-      await axios.post(
-        "https://brain-race.onrender.com/api/register",
-        {
-          name,
-          email,
-          password,
-        }
-      );
+  try {
+    await axios.post(
+      "https://brain-race.onrender.com/api/register",
+      {
+        name,
+        email,
+        password,
+      }
+    );
 
-      alert("Registration Successful");
+    alert("Registration Successful");
+    navigate("/");
+  } catch (error) {
+    console.error(error);
 
-      navigate("/");
-    } catch (error) {
-      console.error(error);
-      alert("Registration Failed");
-    }
-  };
+    alert(
+      error.response?.data?.message ||
+      "Registration Failed"
+    );
+  }
+};
 
   return (
     <div className="register-page">
