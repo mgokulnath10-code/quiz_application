@@ -16,6 +16,119 @@ function Quiz() {
     useState(false);
   const [timeLeft, setTimeLeft] =
     useState(30);
+   
+  useEffect(() => {
+  const disableRightClick = (e) => {
+    e.preventDefault();
+  };
+
+  document.addEventListener(
+    "contextmenu",
+    disableRightClick
+  );
+
+  return () => {
+    document.removeEventListener(
+      "contextmenu",
+      disableRightClick
+    );
+  };
+}, []);
+
+useEffect(() => {
+  const preventCopy = (e) => {
+    e.preventDefault();
+    alert("Copying is disabled!");
+  };
+
+  document.addEventListener(
+    "copy",
+    preventCopy
+  );
+
+  document.addEventListener(
+    "cut",
+    preventCopy
+  );
+
+  document.addEventListener(
+    "paste",
+    preventCopy
+  );
+
+  return () => {
+    document.removeEventListener(
+      "copy",
+      preventCopy
+    );
+
+    document.removeEventListener(
+      "cut",
+      preventCopy
+    );
+
+    document.removeEventListener(
+      "paste",
+      preventCopy
+    );
+  };
+}, []);
+
+useEffect(() => {
+  const handleKeyDown = (e) => {
+    if (
+      e.ctrlKey &&
+      (
+        e.key === "c" ||
+        e.key === "u" ||
+        e.key === "s" ||
+        e.key === "a"
+      )
+    ) {
+      e.preventDefault();
+    }
+
+    if (e.key === "F12") {
+      e.preventDefault();
+    }
+  };
+
+  document.addEventListener(
+    "keydown",
+    handleKeyDown
+  );
+
+  return () => {
+    document.removeEventListener(
+      "keydown",
+      handleKeyDown
+    );
+  };
+}, []);
+
+const [tabChanged, setTabChanged] =
+  useState(false);
+
+useEffect(() => {
+  const handleVisibility = () => {
+    if (document.hidden) {
+      setTabChanged(true);
+    }
+  };
+
+  document.addEventListener(
+    "visibilitychange",
+    handleVisibility
+  );
+
+  return () => {
+    document.removeEventListener(
+      "visibilitychange",
+      handleVisibility
+    );
+  };
+}, []);
+
 
   const navigate = useNavigate();
 
@@ -123,6 +236,20 @@ function Quiz() {
       </div>
     );
   }
+  
+  if (tabChanged) {
+  return (
+    <div className="quiz-page">
+      <h1>
+        Quiz Terminated
+      </h1>
+
+      <p>
+        You switched tabs during the quiz.
+      </p>
+    </div>
+  );
+}
 
   if (showResult) {
     return (
