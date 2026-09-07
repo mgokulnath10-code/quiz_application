@@ -15,6 +15,7 @@ function Navbar() {
     localStorage.removeItem("user");
     localStorage.removeItem("isLoggedIn");
     localStorage.removeItem("token");
+    localStorage.removeItem("adminToken");
     localStorage.removeItem("adminLoggedIn");
     localStorage.removeItem("isAdmin");
 

@@ -1,22 +1,50 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import axios from "axios";
 import { FiShield, FiArrowLeft } from "react-icons/fi";
 import "../styles/Auth.css";
+
+const API = "https://brain-race.onrender.com";
 
 function AdminLogin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const navigate = useNavigate();
 
-  const handleLogin = () => {
-    if (username === "admin" && password === "admin123") {
+  const handleLogin = async () => {
+    if (!username || !password) {
+      setError("Please enter both fields.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await axios.post(
+        `${API}/api/admin/login`,
+        { username, password }
+      );
+
+      localStorage.setItem(
+        "adminToken",
+        res.data.adminToken
+      );
+
       localStorage.setItem("adminLoggedIn", "true");
       localStorage.setItem("isAdmin", "true");
 
       navigate("/admin");
-    } else {
-      alert("Invalid admin credentials.");
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+          "Invalid admin credentials."
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -42,6 +70,15 @@ function AdminLogin() {
         <p className="auth-subtitle">
           Restricted area. Authorized staff only.
         </p>
+
+        {error && (
+          <p
+            className="badge badge-danger"
+            style={{ marginBottom: 16, padding: "6px 12px" }}
+          >
+            {error}
+          </p>
+        )}
 
         <form
           onSubmit={(e) => {
@@ -79,8 +116,9 @@ function AdminLogin() {
           <button
             type="submit"
             className="btn btn-primary btn-block"
+            disabled={loading}
           >
-            Sign in
+            {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
 

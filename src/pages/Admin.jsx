@@ -10,6 +10,11 @@ import {
   FiTrash2,
   FiEdit2,
 } from "react-icons/fi";
+import {
+  getAdminAuth,
+  handleAdminError,
+  clearAdminSession,
+} from "../utils/adminAuth";
 import "../styles/Admin.css";
 
 const API = "https://brain-race.onrender.com";
@@ -35,17 +40,21 @@ function Admin() {
 
   const fetchQuestions = async () => {
     try {
-      const res = await axios.get(`${API}/api/questions`);
+      const res = await axios.get(
+        `${API}/api/questions`,
+        getAdminAuth()
+      );
 
       setQuestions(res.data);
     } catch (error) {
-      console.error(error);
+      if (!handleAdminError(error, navigate)) {
+        console.error(error);
+      }
     }
   };
 
   const logout = () => {
-    localStorage.removeItem("adminLoggedIn");
-    localStorage.removeItem("isAdmin");
+    clearAdminSession();
 
     navigate("/admin-login");
   };
@@ -57,11 +66,15 @@ function Admin() {
     }
 
     try {
-      await axios.post(`${API}/api/questions`, {
-        question,
-        options: [option1, option2, option3, option4],
-        answer,
-      });
+      await axios.post(
+        `${API}/api/questions`,
+        {
+          question,
+          options: [option1, option2, option3, option4],
+          answer,
+        },
+        getAdminAuth()
+      );
 
       setQuestion("");
       setOption1("");
@@ -82,11 +95,16 @@ function Admin() {
     if (!confirmDelete) return;
 
     try {
-      await axios.delete(`${API}/api/questions/${id}`);
+      await axios.delete(
+        `${API}/api/questions/${id}`,
+        getAdminAuth()
+      );
 
       fetchQuestions();
     } catch (error) {
-      console.error(error);
+      if (!handleAdminError(error, navigate)) {
+        console.error(error);
+      }
     }
     };
 
@@ -97,16 +115,20 @@ function Admin() {
 
   const updateQuestion = async () => {
     try {
-      await axios.put(`${API}/api/questions/${editingId}`, {
-        question: editQuestion,
-      });
+      await axios.put(
+        `${API}/api/questions/${editingId}`,
+        { question: editQuestion },
+        getAdminAuth()
+      );
 
       setEditingId(null);
       setEditQuestion("");
 
       fetchQuestions();
     } catch (error) {
-      console.error(error);
+      if (!handleAdminError(error, navigate)) {
+        console.error(error);
+      }
     }
   };
 

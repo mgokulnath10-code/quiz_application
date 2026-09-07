@@ -2,18 +2,12 @@ const express = require("express");
 const router = express.Router();
 
 const auth = require("../middleware/auth");
+const adminAuth = require("../middleware/adminAuth");
 const Room = require("../models/Room");
 
 /* =====================
    HELPERS
 ===================== */
-
-const isMainAdmin = (req) => {
-  return (
-    req.header("x-admin-key") ===
-    (process.env.ADMIN_KEY || "admin123")
-  );
-};
 
 const isRoomAdmin = (room, userId) => {
   return room.admin.userId === userId;
@@ -50,14 +44,8 @@ const generateRoomId = async () => {
    (Controls everything)
 ===================== */
 
-router.get("/admin/all", async (req, res) => {
+router.get("/admin/all", adminAuth, async (req, res) => {
   try {
-    if (!isMainAdmin(req)) {
-      return res
-        .status(403)
-        .json({ message: "Main Admin Only" });
-    }
-
     const rooms = await Room.find().sort({
       createdAt: -1,
     });
@@ -68,14 +56,8 @@ router.get("/admin/all", async (req, res) => {
   }
 });
 
-router.post("/admin/:roomId/end", async (req, res) => {
+router.post("/admin/:roomId/end", adminAuth, async (req, res) => {
   try {
-    if (!isMainAdmin(req)) {
-      return res
-        .status(403)
-        .json({ message: "Main Admin Only" });
-    }
-
     const room = await findRoom(
       req.params.roomId
     );
@@ -99,14 +81,8 @@ router.post("/admin/:roomId/end", async (req, res) => {
   }
 });
 
-router.delete("/admin/:roomId", async (req, res) => {
+router.delete("/admin/:roomId", adminAuth, async (req, res) => {
   try {
-    if (!isMainAdmin(req)) {
-      return res
-        .status(403)
-        .json({ message: "Main Admin Only" });
-    }
-
     const room = await findRoom(
       req.params.roomId
     );
@@ -726,7 +702,6 @@ router.get("/:roomId", auth, async (req, res) => {
 
     const allowed =
       isRoomAdmin(room, userId) ||
-      isMainAdmin(req) ||
       !!getParticipant(room, userId);
 
     if (!allowed) {

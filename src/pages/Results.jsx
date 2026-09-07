@@ -2,6 +2,10 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { FiTrash2, FiBarChart2 } from "react-icons/fi";
+import {
+  getAdminAuth,
+  handleAdminError,
+} from "../utils/adminAuth";
 import "../styles/Results.css";
 
 const API = "https://brain-race.onrender.com";
@@ -34,12 +38,17 @@ function Results() {
     if (!confirmDelete) return;
 
     try {
-      await axios.delete(`${API}/api/results/${id}`);
+      await axios.delete(
+        `${API}/api/results/${id}`,
+        getAdminAuth()
+      );
 
       fetchResults();
     } catch (error) {
-      console.error(error);
-      alert("Failed to delete result.");
+      if (!handleAdminError(error, navigate)) {
+        console.error(error);
+        alert("Failed to delete result.");
+      }
     }
   };
 

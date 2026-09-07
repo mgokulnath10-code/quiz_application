@@ -9,18 +9,13 @@ import {
   FiUsers,
   FiHelpCircle,
 } from "react-icons/fi";
+import {
+  getAdminAuth,
+  handleAdminError,
+} from "../utils/adminAuth";
 import "../styles/Rooms.css";
 
 const API = "https://brain-race.onrender.com";
-
-// Must match ADMIN_KEY in the backend .env
-const ADMIN_KEY = "admin123";
-
-const adminHeaders = () => ({
-  headers: {
-    "x-admin-key": ADMIN_KEY,
-  },
-});
 
 const STATUS_BADGE = {
   waiting: { label: "Waiting", cls: "badge-warning" },
@@ -41,16 +36,19 @@ function AdminRooms() {
     try {
       const res = await axios.get(
         `${API}/api/rooms/admin/all`,
-        adminHeaders()
+        getAdminAuth()
       );
 
       setRooms(res.data);
     } catch (error) {
-      console.error(error);
+      if (!handleAdminError(error, navigate)) {
+        console.error(error);
 
-      alert(
-        error.response?.data?.message || "Could not load rooms"
-      );
+        alert(
+          error.response?.data?.message ||
+            "Could not load rooms"
+        );
+      }
     }
   };
 
@@ -63,12 +61,14 @@ function AdminRooms() {
       await axios.post(
         `${API}/api/rooms/admin/${room.roomId}/end`,
         {},
-        adminHeaders()
+        getAdminAuth()
       );
 
       fetchRooms();
     } catch (error) {
-      alert(error.response?.data?.message || "Could not end room");
+      if (!handleAdminError(error, navigate)) {
+        alert(error.response?.data?.message || "Could not end room");
+      }
     }
   };
 
@@ -84,12 +84,14 @@ function AdminRooms() {
     try {
       await axios.delete(
         `${API}/api/rooms/admin/${room.roomId}`,
-        adminHeaders()
+        getAdminAuth()
       );
 
       fetchRooms();
     } catch (error) {
-      alert(error.response?.data?.message || "Could not delete room");
+      if (!handleAdminError(error, navigate)) {
+        alert(error.response?.data?.message || "Could not delete room");
+      }
     }
   };
 

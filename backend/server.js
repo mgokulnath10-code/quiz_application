@@ -1,5 +1,6 @@
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 
 const express = require("express");
 const cors = require("cors");
@@ -12,6 +13,8 @@ app.use(express.json());
 
 const Question = require("./models/Question");
 const Result = require("./models/Result");
+const auth = require("./middleware/auth");
+const adminAuth = require("./middleware/adminAuth");
 
 mongoose
   .connect(process.env.MONGO_URI)
@@ -54,7 +57,7 @@ app.post("/api/register", async (req, res) => {
     const user = new User({
       name,
       email,
-      password,
+      password: await bcrypt.hash(password, 10),
     });
 
     await user.save();
@@ -71,6 +74,18 @@ app.post("/api/register", async (req, res) => {
    LOGIN
 ===================== */
 
+// Accepts bcrypt hashes; legacy plaintext
+// passwords are verified directly and
+// upgraded to a hash on successful login.
+
+const verifyPassword = async (stored, given) => {
+  if (stored.startsWith("$2")) {
+    return bcrypt.compare(given, stored);
+  }
+
+  return stored === given;
+};
+
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } =
@@ -79,13 +94,32 @@ app.post("/api/login", async (req, res) => {
     const user =
       await User.findOne({
         email,
-        password,
       });
 
     if (!user) {
       return res.status(401).json({
         message: "Invalid Credentials",
       });
+    }
+
+    const valid = await verifyPassword(
+      user.password,
+      password
+    );
+
+    if (!valid) {
+      return res.status(401).json({
+        message: "Invalid Credentials",
+      });
+    }
+
+    if (!user.password.startsWith("$2")) {
+      user.password = await bcrypt.hash(
+        password,
+        10
+      );
+
+      await user.save();
     }
 
     const token = jwt.sign(
@@ -110,12 +144,52 @@ app.post("/api/login", async (req, res) => {
 });
 
 /* =====================
+   ADMIN LOGIN
+   Issues a signed admin JWT — required by
+   every admin API below.
+===================== */
+
+app.post("/api/admin/login", async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    const adminUsername =
+      process.env.ADMIN_USERNAME || "admin";
+
+    const adminPassword =
+      process.env.ADMIN_PASSWORD || "admin123";
+
+    if (
+      username !== adminUsername ||
+      password !== adminPassword
+    ) {
+      return res.status(401).json({
+        message: "Invalid Credentials",
+      });
+    }
+
+    const adminToken = jwt.sign(
+      { role: "admin" },
+      process.env.JWT_SECRET,
+      { expiresIn: "12h" }
+    );
+
+    res.json({
+      message: "Login Successful",
+      adminToken,
+    });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+/* =====================
    QUESTIONS
 ===================== */
 
-// Add Question
+// Add Question (Admin only)
 
-app.post("/api/questions", async (req, res) => {
+app.post("/api/questions", adminAuth, async (req, res) => {
   try {
     const question = new Question({
       question: req.body.question,
@@ -140,7 +214,9 @@ app.post("/api/questions", async (req, res) => {
   }
 });
 
-app.get("/api/users", async (req, res) => {
+// List Users (Admin only)
+
+app.get("/api/users", adminAuth, async (req, res) => {
   try {
     const users = await User.find();
     res.json(users);
@@ -167,7 +243,10 @@ app.put(
         });
       }
 
-      user.password = password;
+      user.password = await bcrypt.hash(
+        password,
+        10
+      );
 
       await user.save();
 
@@ -198,9 +277,26 @@ app.get("/api/questions", async (req, res) => {
   }
 });
 
-// Delete Question
+// Update Question (Admin only)
 
-app.delete("/api/questions/:id", async (req, res) => {
+app.put("/api/questions/:id", adminAuth, async (req, res) => {
+  try {
+    const updatedQuestion =
+      await Question.findByIdAndUpdate(
+        req.params.id,
+        req.body,
+        { new: true }
+      );
+
+    res.json(updatedQuestion);
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+// Delete Question (Admin only)
+
+app.delete("/api/questions/:id", adminAuth, async (req, res) => {
   try {
     await Question.findByIdAndDelete(
       req.params.id
@@ -216,49 +312,6 @@ app.delete("/api/questions/:id", async (req, res) => {
     res.status(500).json({
       success: false,
     });
-  }
-});
-
-app.put("/api/questions/:id", async (req, res) => {
-  try {
-    const updatedQuestion =
-      await Question.findByIdAndUpdate(
-        req.params.id,
-        req.body,
-        { new: true }
-      );
-
-    res.json(updatedQuestion);
-  } catch (error) {
-    res.status(500).json(error);
-  }
-});
-app.put("/api/questions/:id", async (req, res) => {
-  try {
-    const updatedQuestion =
-      await Question.findByIdAndUpdate(
-        req.params.id,
-        req.body,
-        { new: true }
-      );
-
-    res.json(updatedQuestion);
-  } catch (error) {
-    res.status(500).json(error);
-  }
-});
-app.delete("/api/questions/:id", async (req, res) => {
-  try {
-    await Question.findByIdAndDelete(
-      req.params.id
-    );
-
-    res.json({
-      success: true,
-      message: "Question Deleted",
-    });
-  } catch (error) {
-    res.status(500).json(error);
   }
 });
 /* =====================
@@ -345,7 +398,7 @@ app.use("/api/rooms", roomRoutes);
 /* =====================
    SERVER
 ===================== */
-app.get("/api/stats", async (req, res) => {
+app.get("/api/stats", adminAuth, async (req, res) => {
   try {
     const totalQuestions =
       await Question.countDocuments();
@@ -381,6 +434,7 @@ app.get("/api/stats", async (req, res) => {
 });
 app.delete(
   "/api/results/:id",
+  adminAuth,
   async (req, res) => {
     try {
       await Result.findByIdAndDelete(

@@ -11,6 +11,10 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { FiArrowLeft } from "react-icons/fi";
+import {
+  getAdminAuth,
+  handleAdminError,
+} from "../utils/adminAuth";
 import "../styles/AdminStats.css";
 
 const API = "https://brain-race.onrender.com";
@@ -21,12 +25,14 @@ function AdminStats() {
 
   useEffect(() => {
     axios
-      .get(`${API}/api/stats`)
+      .get(`${API}/api/stats`, getAdminAuth())
       .then((res) => {
         setStats(res.data);
       })
       .catch((error) => {
-        console.error(error);
+        if (!handleAdminError(error, navigate)) {
+          console.error(error);
+        }
       });
   }, []);
 
