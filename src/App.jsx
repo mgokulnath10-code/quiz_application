@@ -17,6 +17,10 @@ import AdminStats from "./pages/AdminStats";
 import Certificate from "./pages/Certificate";
 import Profile from "./pages/Profile";
 import AdminLogin from "./pages/AdminLogin";
+import Rooms from "./pages/Rooms";
+import RoomAdmin from "./pages/RoomAdmin";
+import RoomQuiz from "./pages/RoomQuiz";
+import AdminRooms from "./pages/AdminRooms";
 
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
@@ -103,6 +107,34 @@ function App() {
             }
           />
 
+          {/* ROOM ROUTES */}
+          <Route
+            path="/rooms"
+            element={
+              <ProtectedRoute>
+                <Rooms />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/room-admin/:roomId"
+            element={
+              <ProtectedRoute>
+                <RoomAdmin />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/room/:roomId"
+            element={
+              <ProtectedRoute>
+                <RoomQuiz />
+              </ProtectedRoute>
+            }
+          />
+
           {/* ADMIN ROUTES */}
           <Route
             path="/admin-login"
@@ -123,6 +155,15 @@ function App() {
             element={
               <AdminProtectedRoute>
                 <AdminStats />
+              </AdminProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin-rooms"
+            element={
+              <AdminProtectedRoute>
+                <AdminRooms />
               </AdminProtectedRoute>
             }
           />

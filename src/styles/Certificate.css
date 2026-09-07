@@ -1,296 +1,137 @@
-@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Poppins:wght@300;400;500;600&display=swap');
+/* Certificate — printable document look on light theme */
 
-*{
-  margin:0;
-  padding:0;
-  box-sizing:border-box;
+.certificate-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 12px;
 }
 
-.certificate-page{
-  min-height:100vh;
-
-  padding:30px;
-
-  background:
-  linear-gradient(
-    135deg,
-    #020617,
-    #172554,
-    #312e81
-  );
-
-  font-family:'Poppins',sans-serif;
+.certificate-inner {
+  border: 2px solid #0f172a;
+  border-radius: var(--radius);
+  padding: 48px 36px;
+  text-align: center;
 }
 
-.certificate-header{
-  display:flex;
-  justify-content:flex-start;
-  margin-bottom:20px;
+.certificate-seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  border: 1.5px solid #0f172a;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin-bottom: 28px;
 }
 
-.home-btn{
-  padding:12px 24px;
-
-  border:none;
-  border-radius:12px;
-
-  cursor:pointer;
-
-  color:white;
-
-  font-size:15px;
-  font-weight:600;
-
-  background:
-  linear-gradient(
-    135deg,
-    #06b6d4,
-    #0891b2
-  );
-
-  transition:.3s;
+.certificate-kicker {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 26px;
 }
 
-.home-btn:hover{
-  transform:translateY(-3px);
-
-  box-shadow:
-  0 10px 25px
-  rgba(6,182,212,.5);
+.certificate-presented {
+  font-size: 14px;
+  color: var(--text-2);
+  margin-bottom: 8px;
 }
 
-.certificate-card{
-  width:1000px;
-  max-width:100%;
-
-  margin:auto;
-
-  background:white;
-
-  border-radius:20px;
-
-  padding:20px;
-
-  box-shadow:
-  0 20px 60px
-  rgba(0,0,0,.5);
+.student-name {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
 }
 
-.certificate-border{
-  border:10px solid gold;
-
-  padding:60px;
-
-  text-align:center;
-
-  position:relative;
+.certificate-text {
+  max-width: 420px;
+  margin: 0 auto 32px;
+  font-size: 14px;
+  color: var(--text-2);
 }
 
-.certificate-border::before{
-  content:"🏆";
-
-  position:absolute;
-
-  top:20px;
-  right:30px;
-
-  font-size:45px;
+.certificate-score-section {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  margin-bottom: 40px;
 }
 
-.certificate-title{
-  font-family:'Cinzel',serif;
-
-  font-size:50px;
-
-  color:#b8860b;
-
-  margin-bottom:20px;
+.score-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.certificate-subtitle{
-  font-size:20px;
-
-  color:#555;
-
-  margin-bottom:25px;
+.score-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-3);
 }
 
-.student-name{
-  font-family:'Cinzel',serif;
-
-  font-size:45px;
-
-  color:#111827;
-
-  margin-bottom:25px;
-
-  text-transform:capitalize;
+.score-value {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
-.certificate-text{
-  font-size:22px;
-
-  color:#444;
-
-  margin-bottom:40px;
-
-  line-height:1.6;
+.score-divider {
+  width: 1px;
+  height: 40px;
+  background: var(--border-strong);
 }
 
-.certificate-score-section{
-  display:flex;
-
-  justify-content:center;
-
-  gap:30px;
-
-  flex-wrap:wrap;
-
-  margin:30px 0;
+.certificate-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 40px;
 }
 
-.score-box{
-  width:250px;
-
-  padding:20px;
-
-  border-radius:15px;
-
-  background:#f8fafc;
-
-  border:2px solid gold;
-
-  transition:.3s;
+.signature-box {
+  flex: 1;
+  max-width: 200px;
 }
 
-.score-box:hover{
-  transform:translateY(-5px);
-
-  box-shadow:
-  0 10px 25px
-  rgba(184,134,11,.3);
+.signature-line {
+  height: 1px;
+  background: #0f172a;
+  margin-bottom: 8px;
 }
 
-.score-box h3{
-  color:#b8860b;
-
-  margin-bottom:10px;
-
-  font-size:22px;
+.signature-box p {
+  font-size: 13px;
+  color: var(--text-2);
 }
 
-.score-box p{
-  font-size:32px;
-
-  font-weight:700;
-
-  color:#111827;
+.certificate-actions {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
 }
 
-.certificate-footer{
-  margin-top:50px;
-
-  display:flex;
-
-  justify-content:space-between;
-
-  align-items:center;
-
-  flex-wrap:wrap;
-
-  gap:20px;
-}
-
-.signature-box{
-  width:220px;
-}
-
-.signature-box hr{
-  border:1px solid #111;
-
-  margin-bottom:10px;
-}
-
-.signature-box p{
-  font-size:15px;
-
-  color:#333;
-}
-
-.certificate-actions{
-  text-align:center;
-
-  margin-top:25px;
-}
-
-.download-btn{
-  padding:14px 30px;
-
-  border:none;
-  border-radius:12px;
-
-  background:
-  linear-gradient(
-    135deg,
-    #22c55e,
-    #16a34a
-  );
-
-  color:white;
-
-  font-size:16px;
-  font-weight:600;
-
-  cursor:pointer;
-
-  transition:.3s;
-}
-
-.download-btn:hover{
-  transform:translateY(-3px);
-
-  box-shadow:
-  0 10px 25px
-  rgba(34,197,94,.4);
-}
-
-@media(max-width:768px){
-
-  .certificate-page{
-    padding:15px;
+@media (max-width: 640px) {
+  .certificate-inner {
+    padding: 32px 20px;
   }
 
-  .certificate-card{
-    width:100%;
+  .student-name {
+    font-size: 26px;
   }
 
-  .certificate-border{
-    padding:25px;
-  }
-
-  .certificate-title{
-    font-size:30px;
-  }
-
-  .student-name{
-    font-size:28px;
-  }
-
-  .certificate-text{
-    font-size:18px;
-  }
-
-  .score-box{
-    width:100%;
-  }
-
-  .certificate-footer{
-    flex-direction:column;
-
-    align-items:center;
-  }
-
-  .signature-box{
-    width:100%;
+  .certificate-footer {
+    flex-direction: column;
+    gap: 24px;
   }
 }

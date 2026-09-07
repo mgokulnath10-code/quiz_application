@@ -1,0 +1,537 @@
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import axios from "axios";
+import {
+  FiArrowLeft,
+  FiClock,
+  FiLogOut,
+  FiAlertTriangle,
+  FiCheckCircle,
+} from "react-icons/fi";
+import RoomChat from "../components/RoomChat";
+import "../styles/Rooms.css";
+import "../styles/Quiz.css";
+
+const API = "https://brain-race.onrender.com";
+
+const getAuth = () => ({
+  headers: {
+    Authorization: localStorage.getItem("token") || "",
+  },
+});
+
+const STATUS_BADGE = {
+  waiting: { label: "Waiting to start", cls: "badge-warning" },
+  active: { label: "Quiz live", cls: "badge-success" },
+  ended: { label: "Ended", cls: "badge-neutral" },
+};
+
+function RoomQuiz() {
+  const { roomId } = useParams();
+  const navigate = useNavigate();
+
+  const [room, setRoom] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [needsJoin, setNeedsJoin] = useState(false);
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState("");
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [submitting, setSubmitting] = useState(false);
+
+  const user = JSON.parse(localStorage.getItem("user")) || { name: "Guest" };
+
+  useEffect(() => {
+    fetchRoom();
+
+    const timer = setInterval(fetchRoom, 3000);
+
+    return () => clearInterval(timer);
+  }, [roomId]);
+
+  const fetchRoom = async () => {
+    try {
+      const res = await axios.get(`${API}/api/rooms/${roomId}`, getAuth());
+
+      setRoom(res.data);
+      setNeedsJoin(false);
+    } catch (error) {
+      if (error.response?.status === 403) {
+        setNeedsJoin(true);
+      } else if (error.response?.status === 404) {
+        setNotFound(true);
+      }
+
+      console.error(error);
+    }
+  };
+
+  const joinRoom = async () => {
+    try {
+      await axios.post(
+        `${API}/api/rooms/join`,
+        { roomId: roomId.toUpperCase(), name: user.name },
+        getAuth()
+      );
+
+      fetchRoom();
+    } catch (error) {
+      alert(error.response?.data?.message || "Could not join room");
+    }
+  };
+
+  const leaveRoom = async () => {
+    try {
+      await axios.post(`${API}/api/rooms/${roomId}/leave`, {}, getAuth());
+    } catch (error) {
+      console.error(error);
+    }
+
+    navigate("/rooms");
+  };
+
+  const submitScore = async (finalScore) => {
+    setSubmitting(true);
+
+    try {
+      await axios.post(
+        `${API}/api/rooms/${roomId}/submit`,
+        { score: finalScore, total: room.questions.length },
+        getAuth()
+      );
+
+      fetchRoom();
+    } catch (error) {
+      alert(error.response?.data?.message || "Could not submit score");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleNext = () => {
+    let newScore = score;
+
+    if (selectedAnswer === room.questions[currentIndex].answer) {
+      newScore++;
+      setScore(newScore);
+    }
+
+    setSelectedAnswer("");
+    setTimeLeft(30);
+
+    if (currentIndex < room.questions.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+    } else {
+      submitScore(newScore);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      !room ||
+      room.status !== "active" ||
+      (room.participants.find((p) => p.userId === user._id) || {})
+        .submitted ||
+      submitting
+    ) {
+      return;
+    }
+
+    if (timeLeft === 0) {
+      handleNext();
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setTimeLeft((prev) => prev - 1);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [timeLeft, room, submitting]);
+
+  if (notFound) {
+    return (
+      <div className="page">
+        <div className="page-inner">
+          <div className="card empty-state">
+            <span className="empty-icon" style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>
+              <FiAlertTriangle />
+            </span>
+
+            <p>No room exists with the code {roomId.toUpperCase()}.</p>
+
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 16 }}
+              onClick={() => navigate("/rooms")}
+            >
+              <FiArrowLeft />
+              Back to rooms
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (needsJoin && !room) {
+    return (
+      <div className="page">
+        <div className="page-inner narrow">
+          <div className="card empty-state">
+            <h3>Join room {roomId.toUpperCase()}?</h3>
+
+            <p style={{ marginTop: 8 }}>
+              You need to join this room before entering it.
+            </p>
+
+            <div className="row" style={{ justifyContent: "center", marginTop: 16 }}>
+              <button className="btn btn-primary" onClick={joinRoom}>
+                Join room
+              </button>
+
+              <button className="btn btn-secondary" onClick={() => navigate("/rooms")}>
+                <FiArrowLeft />
+                Back to rooms
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!room) {
+    return (
+      <div className="page">
+        <div className="page-inner">
+          <div className="loading-screen">Loading room...</div>
+        </div>
+      </div>
+    );
+  }
+
+  const me =
+    room.participants.find((p) => p.userId === user._id) || {};
+
+  const isAdminRoom = room.admin.userId === user._id;
+
+  const leaderboard = room.participants
+    .filter((p) => p.submitted && !p.removed)
+    .sort((a, b) => b.score - a.score);
+
+  if (me.removed) {
+    return (
+      <div className="page">
+        <div className="page-inner">
+          <div className="card empty-state">
+            <span className="empty-icon" style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>
+              <FiAlertTriangle />
+            </span>
+
+            <p>You were removed from this room by the admin.</p>
+
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 16 }}
+              onClick={() => navigate("/rooms")}
+            >
+              <FiArrowLeft />
+              Back to rooms
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ===== QUIZ PHASE ===== */
+
+  if (room.status === "active" && !me.submitted) {
+    if (room.questions.length === 0) {
+      return (
+        <div className="quiz-result-page">
+          <div className="quiz-result-card">
+            <h1 className="quiz-result-title">No questions yet</h1>
+
+            <p className="quiz-result-sub">
+              The admin hasn't added any questions to this room.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="quiz-page">
+        <div className="quiz-card">
+          <div className="quiz-topbar">
+            <span className="quiz-meta">
+              {room.name}
+
+              <span className="room-code">{room.roomId}</span>
+            </span>
+
+            <span className={`quiz-timer ${timeLeft <= 10 ? "urgent" : ""}`}>
+              <FiClock />
+              {timeLeft}s
+            </span>
+          </div>
+
+          <div className="progress-container">
+            <div
+              className="progress-fill"
+              style={{
+                width: `${((currentIndex + 1) / room.questions.length) * 100}%`,
+              }}
+            />
+          </div>
+
+          <h2 className="question-text">
+            {room.questions[currentIndex].question}
+          </h2>
+
+          {room.questions[currentIndex].options.map((option, index) => (
+            <label
+              key={index}
+              className={`option ${selectedAnswer === option ? "selected" : ""}`}
+            >
+              <input
+                type="radio"
+                name="answer"
+                value={option}
+                checked={selectedAnswer === option}
+                onChange={(e) => setSelectedAnswer(e.target.value)}
+              />
+
+              {option}
+            </label>
+          ))}
+
+          <div className="quiz-footer">
+            <span className="quiz-score-inline">
+              Score: <strong>{score}</strong>
+            </span>
+
+            <button
+              className="btn btn-primary"
+              disabled={!selectedAnswer}
+              onClick={handleNext}
+            >
+              {currentIndex === room.questions.length - 1
+                ? "Submit quiz"
+                : "Next question"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /* ===== SUBMITTED / ENDED PHASE ===== */
+
+  if (me.submitted || room.status === "ended") {
+    const badge = STATUS_BADGE[room.status] || STATUS_BADGE.waiting;
+
+    return (
+      <div className="page">
+        <div className="page-inner">
+
+          <div className="page-topbar">
+            <div>
+              <h1 className="page-title">
+                {room.status === "ended" ? "Quiz ended" : "Result submitted"}
+              </h1>
+
+              <p className="page-subtitle">{room.name}</p>
+            </div>
+
+            <button className="btn btn-secondary" onClick={() => navigate("/rooms")}>
+              <FiArrowLeft />
+              Back to rooms
+            </button>
+          </div>
+
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="row between" style={{ justifyContent: "space-between" }}>
+              <div>
+                <span className={`badge ${badge.cls}`}>
+                  <span className="status-dot" />
+                  {badge.label}
+                </span>
+
+                <p className="muted" style={{ marginTop: 10 }}>
+                  {room.status === "ended"
+                    ? "Final results for this room."
+                    : "Waiting for the admin to end the quiz..."}
+                </p>
+              </div>
+
+              {me.submitted && (
+                <div style={{ textAlign: "right" }}>
+                  <div className="stat-value" style={{ fontSize: 32, fontWeight: 700 }}>
+                    {me.score}/{me.total}
+                  </div>
+
+                  <div className="stat-label">
+                    {me.total > 0
+                      ? Math.round((me.score / me.total) * 100) + "% correct"
+                      : ""}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <h2 className="room-section-title">
+            Leaderboard
+
+            <span className="count">{leaderboard.length}</span>
+          </h2>
+
+          {leaderboard.length === 0 ? (
+            <div className="card empty-state">
+              <p>No submissions yet.</p>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Participant</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {leaderboard.map((p, index) => (
+                    <tr key={p.userId}>
+                      <td>
+                        <span className={`rank-chip r${index + 1}`}>
+                          {index + 1}
+                        </span>
+                      </td>
+
+                      <td>
+                        <strong>{p.name}</strong>
+
+                        {p.userId === user._id && (
+                          <span className="badge badge-accent" style={{ marginLeft: 8 }}>
+                            You
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="num">
+                        {p.score}/{p.total}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <h2 className="room-section-title">Chat</h2>
+
+          <RoomChat roomId={room.roomId} />
+
+        </div>
+      </div>
+    );
+  }
+
+  /* ===== WAITING PHASE ===== */
+
+  const badge = STATUS_BADGE[room.status] || STATUS_BADGE.waiting;
+
+  const activeParticipants = room.participants.filter((p) => !p.removed);
+
+  return (
+    <div className="page">
+      <div className="page-inner">
+
+        <div className="page-topbar">
+          <div>
+            <h1 className="page-title">{room.name}</h1>
+
+            <p className="page-subtitle">
+              <span className="room-code" style={{ marginLeft: 0 }}>
+                {room.roomId}
+              </span>
+            </p>
+          </div>
+
+          <div className="row">
+            {!isAdminRoom && (
+              <button className="btn btn-danger-soft" onClick={leaveRoom}>
+                <FiLogOut />
+                Leave room
+              </button>
+            )}
+
+            <button className="btn btn-ghost" onClick={() => navigate("/rooms")}>
+              <FiArrowLeft />
+              Rooms
+            </button>
+          </div>
+        </div>
+
+        <div className="card waiting-card" style={{ marginBottom: 20 }}>
+          <div className="waiting-spinner" />
+
+          <h2>Waiting for the admin to start</h2>
+
+          <p className="muted">
+            The quiz will begin automatically — keep this page open.
+          </p>
+
+          <span className={`badge ${badge.cls}`}>
+            <span className="status-dot" />
+            {badge.label}
+          </span>
+        </div>
+
+        <h2 className="room-section-title">
+          Participants
+
+          <span className="count">{activeParticipants.length}</span>
+        </h2>
+
+        {activeParticipants.map((p) => (
+          <div className="participant-row" key={p.userId}>
+            <span className="p-name">
+              <span className="p-avatar">{p.name.charAt(0).toUpperCase()}</span>
+
+              {p.name}
+
+              {p.userId === room.admin.userId && (
+                <span className="badge badge-accent">Admin</span>
+              )}
+
+              {p.userId === user._id && (
+                <span className="badge badge-neutral">You</span>
+              )}
+            </span>
+
+            {p.submitted && (
+              <span className="badge badge-success">
+                <FiCheckCircle />
+                Submitted
+              </span>
+            )}
+          </div>
+        ))}
+
+        <h2 className="room-section-title">Chat</h2>
+
+        <RoomChat roomId={room.roomId} />
+
+      </div>
+    </div>
+  );
+}
+
+export default RoomQuiz;

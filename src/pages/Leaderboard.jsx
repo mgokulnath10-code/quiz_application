@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { FiTrendingUp } from "react-icons/fi";
 import "../styles/Leaderboard.css";
+
+const API = "https://brain-race.onrender.com";
 
 function Leaderboard() {
   const [results, setResults] = useState([]);
@@ -13,13 +16,9 @@ function Leaderboard() {
 
   const fetchResults = async () => {
     try {
-      const res = await axios.get(
-        "https://brain-race.onrender.com/api/results"
-      );
+      const res = await axios.get(`${API}/api/results`);
 
-      const sorted = [...res.data].sort(
-        (a, b) => b.score - a.score
-      );
+      const sorted = [...res.data].sort((a, b) => b.score - a.score);
 
       setResults(sorted);
     } catch (error) {
@@ -27,113 +26,73 @@ function Leaderboard() {
     }
   };
 
-  const top3 = results.slice(0, 3);
-
   return (
-    <div className="leaderboard-page">
+    <div className="page">
+      <div className="page-inner">
 
-      {/* Navigation Buttons */}
+        <div className="page-topbar">
+          <div>
+            <h1 className="page-title">Leaderboard</h1>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: "20px",
-        }}
-      >
-        <button
-          className="back-btn"
-          onClick={() => navigate("/")}
-        >
-          🏠 Home
-        </button>
+            <p className="page-subtitle">
+              Top scores across all quiz attempts.
+            </p>
+          </div>
 
-        <button
-          className="back-btn"
-          onClick={() => navigate("/results")}
-        >
-          📊 Results
-        </button>
-      </div>
+          <button
+            className="btn btn-secondary"
+            onClick={() => navigate("/")}
+          >
+            Back to home
+          </button>
+        </div>
 
-      <h1 className="leaderboard-title">
-        🏆 Leaderboard
-      </h1>
+        {results.length === 0 ? (
+          <div className="card empty-state">
+            <span className="empty-icon">
+              <FiTrendingUp />
+            </span>
 
-      {results.length === 0 ? (
-        <h2
-          style={{
-            textAlign: "center",
-            color: "white",
-          }}
-        >
-          No Results Available
-        </h2>
-      ) : (
-        <>
-          {top3.length >= 3 && (
-            <div className="podium">
-
-              <div className="second-place">
-                <div className="medal">🥈</div>
-                <h3>{top3[1]?.user}</h3>
-                <p>{top3[1]?.score} pts</p>
-              </div>
-
-              <div className="first-place">
-                <div className="medal">🥇</div>
-                <h3>{top3[0]?.user}</h3>
-                <p>{top3[0]?.score} pts</p>
-              </div>
-
-              <div className="third-place">
-                <div className="medal">🥉</div>
-                <h3>{top3[2]?.user}</h3>
-                <p>{top3[2]?.score} pts</p>
-              </div>
-
-            </div>
-          )}
-
-          <div className="table-container">
-
-            <table>
-
+            <p>No results yet. Be the first on the board.</p>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
               <thead>
                 <tr>
                   <th>Rank</th>
-                  <th>Name</th>
+                  <th>Participant</th>
                   <th>Score</th>
+                  <th>Questions</th>
                 </tr>
               </thead>
 
               <tbody>
+                {results.map((result, index) => (
+                  <tr key={index}>
+                    <td>
+                      <span className={`rank-chip r${index + 1}`}>
+                        {index + 1}
+                      </span>
+                    </td>
 
-                {results.map(
-                  (result, index) => (
-                    <tr key={index}>
-                      <td>
-                        #{index + 1}
-                      </td>
+                    <td>
+                      <strong>{result.user}</strong>
+                    </td>
 
-                      <td>
-                        {result.user}
-                      </td>
+                    <td className="num">
+                      <strong>{result.score}</strong>
+                    </td>
 
-                      <td>
-                        {result.score}
-                      </td>
-                    </tr>
-                  )
-                )}
-
+                    <td className="num">{result.totalQuestions}</td>
+                  </tr>
+                ))}
               </tbody>
-
             </table>
-
           </div>
-        </>
-      )}
+        )}
+
+      </div>
     </div>
   );
 }

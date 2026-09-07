@@ -1,98 +1,130 @@
 import { useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
-import "../styles/Register.css";
+import { FiZap } from "react-icons/fi";
+import "../styles/Auth.css";
+
+const API = "https://brain-race.onrender.com";
 
 function Register() {
   const navigate = useNavigate();
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] =
-    useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleRegister = async () => {
-  try {
-    await axios.post(
-      "https://brain-race.onrender.com/api/register",
-      {
-        name,
-        email,
-        password,
-      }
-    );
+    if (!name || !email || !password) {
+      alert("Please fill in all fields.");
+      return;
+    }
 
-    alert("Registration Successful");
-    navigate("/");
-  } catch (error) {
-    console.error(error);
+    setLoading(true);
 
-    alert(
-      error.response?.data?.message ||
-      "Registration Failed"
-    );
-  }
-};
+    try {
+      await axios.post(
+        `${API}/api/register`,
+        { name, email, password }
+      );
+
+      alert("Account created. Please log in.");
+
+      navigate("/login");
+    } catch (error) {
+      alert(
+        error.response?.data?.message ||
+          "Registration failed."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="register-page">
+    <div className="auth-page">
 
-      <div className="stars"></div>
+      <div className="auth-card">
 
-      <div className="register-card">
+        <Link to="/" className="auth-brand">
+          <span className="brand-mark">
+            <FiZap />
+          </span>
 
-        <h1>🚀 Join BrainRace</h1>
+          <span className="brand-name">
+            BrainRace
+          </span>
+        </Link>
 
-        <p>
-          Create your account and
-          start competing.
+        <h1 className="auth-title">
+          Create your account
+        </h1>
+
+        <p className="auth-subtitle">
+          Join BrainRace and start competing today.
         </p>
 
-        <input
-          type="text"
-          placeholder="Full Name"
-          value={name}
-          onChange={(e) =>
-            setName(e.target.value)
-          }
-        />
-
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) =>
-            setEmail(e.target.value)
-          }
-        />
-
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) =>
-            setPassword(e.target.value)
-          }
-        />
-
-        <button
-          onClick={handleRegister}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleRegister();
+          }}
         >
-          CREATE ACCOUNT
-        </button>
+          <div className="field">
+            <label htmlFor="reg-name">Full name</label>
 
-        <p className="login-link">
-          Already registered?
-          <Link to="/">
-            Login
-          </Link>
+            <input
+              id="reg-name"
+              className="input"
+              type="text"
+              placeholder="Your name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="reg-email">Email</label>
+
+            <input
+              id="reg-email"
+              className="input"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="reg-password">Password</label>
+
+            <input
+              id="reg-password"
+              className="input"
+              type="password"
+              placeholder="Choose a password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-block"
+            disabled={loading}
+          >
+            {loading ? "Creating account..." : "Create account"}
+          </button>
+        </form>
+
+        <p className="auth-footer">
+          Already have an account?{" "}
+
+          <Link to="/login">Log in</Link>
         </p>
-<button
-  className="back-btn"
-  onClick={() => navigate("/login")}
->
-  ← Back Login
-</button>
+
       </div>
 
     </div>

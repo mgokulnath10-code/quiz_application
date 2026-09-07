@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { FiTrash2, FiBarChart2 } from "react-icons/fi";
 import "../styles/Results.css";
+
+const API = "https://brain-race.onrender.com";
 
 function Results() {
   const [results, setResults] = useState([]);
   const navigate = useNavigate();
 
-  const isAdmin =
-    localStorage.getItem("isAdmin") === "true";
+  const isAdmin = localStorage.getItem("isAdmin") === "true";
 
   useEffect(() => {
     fetchResults();
@@ -16,9 +18,7 @@ function Results() {
 
   const fetchResults = async () => {
     try {
-      const res = await axios.get(
-        "https://brain-race.onrender.com/api/results"
-      );
+      const res = await axios.get(`${API}/api/results`);
 
       setResults(res.data);
     } catch (error) {
@@ -34,16 +34,12 @@ function Results() {
     if (!confirmDelete) return;
 
     try {
-      await axios.delete(
-        `https://brain-race.onrender.com/api/results/${id}`
-      );
-
-      alert("✅ Result Deleted Successfully");
+      await axios.delete(`${API}/api/results/${id}`);
 
       fetchResults();
     } catch (error) {
       console.error(error);
-      alert("❌ Failed to Delete Result");
+      alert("Failed to delete result.");
     }
   };
 
@@ -51,112 +47,116 @@ function Results() {
 
   const highestScore =
     results.length > 0
-      ? Math.max(
-          ...results.map((r) => r.score)
-        )
+      ? Math.max(...results.map((r) => r.score))
       : 0;
 
   const averageScore =
     results.length > 0
       ? (
-          results.reduce(
-            (sum, r) => sum + r.score,
-            0
-          ) / results.length
+          results.reduce((sum, r) => sum + r.score, 0) / results.length
         ).toFixed(1)
       : 0;
 
   return (
-    <div className="results-page">
+    <div className="page">
+      <div className="page-inner">
 
-      <div className="results-header">
-        <button
-          className="back-btn"
-          onClick={() => navigate("/")}
-        >
-          🏠 Home
-        </button>
+        <div className="page-topbar">
+          <div>
+            <h1 className="page-title">Results</h1>
+
+            <p className="page-subtitle">
+              All quiz attempts across the platform.
+            </p>
+          </div>
+
+          <button
+            className="btn btn-secondary"
+            onClick={() => navigate("/")}
+          >
+            Back to home
+          </button>
+        </div>
+
+        <div className="stat-grid">
+          <div className="stat-card">
+            <div className="stat-value">{totalAttempts}</div>
+            <div className="stat-label">Total attempts</div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-value">{highestScore}</div>
+            <div className="stat-label">Highest score</div>
+          </div>
+
+          <div className="stat-card">
+            <div className="stat-value">{averageScore}</div>
+            <div className="stat-label">Average score</div>
+          </div>
+        </div>
+
+        {results.length === 0 ? (
+          <div className="card empty-state">
+            <span className="empty-icon">
+              <FiBarChart2 />
+            </span>
+
+            <p>No results yet. Complete a quiz to see it here.</p>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Participant</th>
+                  <th>Score</th>
+                  <th>Questions</th>
+                  <th>Date</th>
+                  {isAdmin && <th></th>}
+                </tr>
+              </thead>
+
+              <tbody>
+                {results.map((result) => (
+                  <tr key={result._id}>
+                    <td>{result.user}</td>
+
+                    <td className="num">
+                      <strong>{result.score}</strong>
+                    </td>
+
+                    <td className="num">{result.totalQuestions}</td>
+
+                    <td>
+                      {new Date(result.date).toLocaleDateString(
+                        undefined,
+                        {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        }
+                      )}
+                    </td>
+
+                    {isAdmin && (
+                      <td style={{ textAlign: "right" }}>
+                        <button
+                          className="btn btn-danger-soft btn-sm"
+                          onClick={() => deleteResult(result._id)}
+                        >
+                          <FiTrash2 />
+                          Delete
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
       </div>
-
-      <h1 className="results-title">
-        🏆 Quiz Results
-      </h1>
-
-      <div className="results-stats">
-
-        <div className="stat-card">
-          <h2>{totalAttempts}</h2>
-          <p>Total Attempts</p>
-        </div>
-
-        <div className="stat-card">
-          <h2>{highestScore}</h2>
-          <p>Highest Score</p>
-        </div>
-
-        <div className="stat-card">
-          <h2>{averageScore}</h2>
-          <p>Average Score</p>
-        </div>
-
-      </div>
-
-      {results.length === 0 ? (
-        <div className="empty-results">
-          No Results Found
-        </div>
-      ) : (
-        <div className="results-grid">
-
-          {results.map((result, index) => (
-            <div
-              className="result-card"
-              key={result._id}
-            >
-
-              <div className="rank-badge">
-                #{index + 1}
-              </div>
-
-              <h3>
-                👤 {result.user}
-              </h3>
-
-              <p>
-                📚 Total Questions:{" "}
-                {result.totalQuestions}
-              </p>
-
-              <p>
-                📅 Date:{" "}
-                {new Date(
-                  result.date
-                ).toLocaleString()}
-              </p>
-
-              <div className="score-badge">
-                Score: {result.score}
-              </div>
-
-              {isAdmin && (
-                <button
-                  className="delete-btn"
-                  onClick={() =>
-                    deleteResult(
-                      result._id
-                    )
-                  }
-                >
-                  🗑 Delete
-                </button>
-              )}
-
-            </div>
-          ))}
-
-        </div>
-      )}
-
     </div>
   );
 }

@@ -23,6 +23,7 @@ mongoose
   });
 
 const User = require("./models/User");
+const roomRoutes = require("./routes/roomRoutes");
 
 /* =====================
    HOME
@@ -336,6 +337,12 @@ app.get("/api/results", async (req, res) => {
 });
 
 /* =====================
+   ROOMS
+===================== */
+
+app.use("/api/rooms", roomRoutes);
+
+/* =====================
    SERVER
 ===================== */
 app.get("/api/stats", async (req, res) => {
@@ -389,6 +396,8 @@ app.delete(
     }
   }
 );
-app.listen(5000, () => {
-  console.log("Server Started");
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`Server Started on port ${PORT}`);
 });

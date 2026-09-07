@@ -1,23 +1,32 @@
 import { useState, useRef } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
-import "../styles/Login.css";
+import { FiZap, FiArrowLeft } from "react-icons/fi";
+import "../styles/Auth.css";
+
+const API = "https://brain-race.onrender.com";
 
 function Login() {
   const navigate = useNavigate();
+
   const passwordRef = useRef(null);
+
   const [email, setEmail] = useState("");
-  const [password, setPassword] =
-    useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
+    if (!email || !password) {
+      alert("Please enter your email and password.");
+      return;
+    }
+
+    setLoading(true);
+
     try {
       const res = await axios.post(
-        "https://brain-race.onrender.com/api/login",
-        {
-          email,
-          password,
-        }
+        `${API}/api/login`,
+        { email, password }
       );
 
       localStorage.setItem(
@@ -30,102 +39,110 @@ function Login() {
         res.data.token || ""
       );
 
-      localStorage.setItem(
-        "isLoggedIn",
-        "true"
-      );
-      localStorage.setItem(
-  "isAdmin",
-  "false"
-);
-
-      alert("✅ Login Successful!");
+      localStorage.setItem("isLoggedIn", "true");
+      localStorage.setItem("isAdmin", "false");
 
       navigate("/");
-
     } catch (error) {
-      alert("❌ Invalid Login");
-
-      console.error(error);
+      alert(
+        error.response?.data?.message ||
+          "Invalid email or password."
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="login-page">
+    <div className="auth-page">
 
-      <div className="bg-circle circle1"></div>
-      <div className="bg-circle circle2"></div>
+      <div className="auth-card">
 
-      <div className="login-card">
+        <Link to="/" className="auth-brand">
+          <span className="brand-mark">
+            <FiZap />
+          </span>
 
-        <div className="logo">
-          🧠
-        </div>
+          <span className="brand-name">
+            BrainRace
+          </span>
+        </Link>
 
-        <h1 className="title">
-          BrainRace
+        <h1 className="auth-title">
+          Welcome back
         </h1>
 
-        <p className="subtitle">
-          Test Your Knowledge
+        <p className="auth-subtitle">
+          Log in to continue to your account.
         </p>
 
-       <input
-  type="email"
-  placeholder="Email Address"
-  value={email}
-  onChange={(e) =>
-    setEmail(e.target.value)
-  }
-  onKeyDown={(e) => {
-    if (e.key === "Enter") {
-      passwordRef.current.focus();
-    }
-  }}
-/>
-
-        <input
-  ref={passwordRef}
-  type="password"
-  placeholder="Password"
-  value={password}
-  onChange={(e) =>
-    setPassword(e.target.value)
-  }
-  onKeyDown={(e) => {
-    if (e.key === "Enter") {
-      handleLogin();
-    }
-  }}
-/>
-
-        <button
-          className="login-btn"
-          onClick={handleLogin}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleLogin();
+          }}
         >
-          LOGIN
-        </button>
+          <div className="field">
+            <label htmlFor="login-email">Email</label>
 
-        <p className="register-link">
+            <input
+              id="login-email"
+              className="input"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="login-password">Password</label>
+
+            <input
+              id="login-password"
+              ref={passwordRef}
+              className="input"
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-block"
+            disabled={loading}
+          >
+            {loading ? "Logging in..." : "Log in"}
+          </button>
+        </form>
+
+        <div className="auth-secondary">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => navigate("/forgot-password")}
+          >
+            Forgot password?
+          </button>
+        </div>
+
+        <p className="auth-footer">
           Don't have an account?{" "}
-          <Link to="/register">
-            Register
-          </Link>
+
+          <Link to="/register">Sign up</Link>
         </p>
-        <button
-  className="forgot-btn"
-  onClick={() =>
-    navigate("/forgot-password")
-  }
->
-  🔑 Forgot Password
-</button>
+
+        <div className="auth-divider">
+          More
+        </div>
 
         <button
-          className="back-btn"
-          onClick={() => navigate("/")}
+          className="btn btn-secondary btn-block"
+          onClick={() => navigate("/admin-login")}
         >
-          🏠 Back Home
+          Admin login
         </button>
 
       </div>

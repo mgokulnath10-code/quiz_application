@@ -1,140 +1,98 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import {
+  FiClock,
+  FiCheckCircle,
+  FiAward,
+  FiHome,
+  FiLogOut,
+  FiAlertTriangle,
+} from "react-icons/fi";
 
 import "../styles/Quiz.css";
 import "../styles/QuizResult.css";
 
+const API = "https://brain-race.onrender.com";
+
 function Quiz() {
   const [questions, setQuestions] = useState([]);
-  const [currentQuestion, setCurrentQuestion] =
-    useState(0);
-  const [selectedAnswer, setSelectedAnswer] =
-    useState("");
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState("");
   const [score, setScore] = useState(0);
-  const [showResult, setShowResult] =
-    useState(false);
-  const [timeLeft, setTimeLeft] =
-    useState(30);
-   
+  const [showResult, setShowResult] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(30);
+
   useEffect(() => {
-  const disableRightClick = (e) => {
-    e.preventDefault();
-  };
-
-  document.addEventListener(
-    "contextmenu",
-    disableRightClick
-  );
-
-  return () => {
-    document.removeEventListener(
-      "contextmenu",
-      disableRightClick
-    );
-  };
-}, []);
-
-useEffect(() => {
-  const preventCopy = (e) => {
-    e.preventDefault();
-    alert("Copying is disabled!");
-  };
-
-  document.addEventListener(
-    "copy",
-    preventCopy
-  );
-
-  document.addEventListener(
-    "cut",
-    preventCopy
-  );
-
-  document.addEventListener(
-    "paste",
-    preventCopy
-  );
-
-  return () => {
-    document.removeEventListener(
-      "copy",
-      preventCopy
-    );
-
-    document.removeEventListener(
-      "cut",
-      preventCopy
-    );
-
-    document.removeEventListener(
-      "paste",
-      preventCopy
-    );
-  };
-}, []);
-
-useEffect(() => {
-  const handleKeyDown = (e) => {
-    if (
-      e.ctrlKey &&
-      (
-        e.key === "c" ||
-        e.key === "u" ||
-        e.key === "s" ||
-        e.key === "a"
-      )
-    ) {
+    const disableRightClick = (e) => {
       e.preventDefault();
-    }
+    };
 
-    if (e.key === "F12") {
+    document.addEventListener("contextmenu", disableRightClick);
+
+    return () => {
+      document.removeEventListener("contextmenu", disableRightClick);
+    };
+  }, []);
+
+  useEffect(() => {
+    const preventCopy = (e) => {
       e.preventDefault();
-    }
-  };
+      alert("Copying is disabled during the quiz.");
+    };
 
-  document.addEventListener(
-    "keydown",
-    handleKeyDown
-  );
+    document.addEventListener("copy", preventCopy);
+    document.addEventListener("cut", preventCopy);
+    document.addEventListener("paste", preventCopy);
 
-  return () => {
-    document.removeEventListener(
-      "keydown",
-      handleKeyDown
-    );
-  };
-}, []);
+    return () => {
+      document.removeEventListener("copy", preventCopy);
+      document.removeEventListener("cut", preventCopy);
+      document.removeEventListener("paste", preventCopy);
+    };
+  }, []);
 
-const [tabChanged, setTabChanged] =
-  useState(false);
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (
+        e.ctrlKey &&
+        (e.key === "c" || e.key === "u" || e.key === "s" || e.key === "a")
+      ) {
+        e.preventDefault();
+      }
 
-useEffect(() => {
-  const handleVisibility = () => {
-    if (document.hidden) {
-      setTabChanged(true);
-    }
-  };
+      if (e.key === "F12") {
+        e.preventDefault();
+      }
+    };
 
-  document.addEventListener(
-    "visibilitychange",
-    handleVisibility
-  );
+    document.addEventListener("keydown", handleKeyDown);
 
-  return () => {
-    document.removeEventListener(
-      "visibilitychange",
-      handleVisibility
-    );
-  };
-}, []);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
 
+  const [tabChanged, setTabChanged] = useState(false);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.hidden) {
+        setTabChanged(true);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, []);
 
   const navigate = useNavigate();
 
   const user =
-    JSON.parse(localStorage.getItem("user")) ||
-    { name: "Guest" };
+    JSON.parse(localStorage.getItem("user")) || { name: "Guest" };
 
   useEffect(() => {
     fetchQuestions();
@@ -142,9 +100,7 @@ useEffect(() => {
 
   const fetchQuestions = async () => {
     try {
-      const res = await axios.get(
-        "https://brain-race.onrender.com/api/questions"
-      );
+      const res = await axios.get(`${API}/api/questions`);
 
       setQuestions(res.data);
     } catch (error) {
@@ -157,23 +113,17 @@ useEffect(() => {
     localStorage.removeItem("isLoggedIn");
     localStorage.removeItem("token");
 
-    alert("✅ Logout Successful!");
-
     navigate("/");
   };
 
   const saveResult = async (finalScore) => {
     try {
-      await axios.post(
-        "https://brain-race.onrender.com/api/results",
-        {
-          user: user.name,
-          score: finalScore,
-          totalQuestions:
-            questions.length,
-          date: new Date(),
-        }
-      );
+      await axios.post(`${API}/api/results`, {
+        user: user.name,
+        score: finalScore,
+        totalQuestions: questions.length,
+        date: new Date(),
+      });
     } catch (error) {
       console.error(error);
     }
@@ -182,10 +132,7 @@ useEffect(() => {
   const handleNext = async () => {
     let newScore = score;
 
-    if (
-      selectedAnswer ===
-      questions[currentQuestion].answer
-    ) {
+    if (selectedAnswer === questions[currentQuestion].answer) {
       newScore++;
       setScore(newScore);
     }
@@ -193,13 +140,8 @@ useEffect(() => {
     setSelectedAnswer("");
     setTimeLeft(30);
 
-    if (
-      currentQuestion <
-      questions.length - 1
-    ) {
-      setCurrentQuestion(
-        currentQuestion + 1
-      );
+    if (currentQuestion < questions.length - 1) {
+      setCurrentQuestion(currentQuestion + 1);
     } else {
       await saveResult(newScore);
       setShowResult(true);
@@ -207,11 +149,7 @@ useEffect(() => {
   };
 
   useEffect(() => {
-    if (
-      showResult ||
-      questions.length === 0
-    )
-      return;
+    if (showResult || questions.length === 0) return;
 
     if (timeLeft === 0) {
       handleNext();
@@ -223,213 +161,168 @@ useEffect(() => {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [
-    timeLeft,
-    showResult,
-    questions,
-  ]);
+  }, [timeLeft, showResult, questions]);
 
   if (questions.length === 0) {
     return (
-      <div className="loading">
-        <h2>Loading Questions...</h2>
+      <div className="quiz-page">
+        <div className="loading-screen">
+          Loading questions...
+        </div>
       </div>
     );
   }
-  
+
   if (tabChanged) {
-  return (
-    <div className="quiz-page">
-      <h1>
-        Quiz Terminated
-      </h1>
-
-      <p>
-        You switched tabs during the quiz.
-      </p>
-    </div>
-  );
-}
-
-  if (showResult) {
     return (
       <div className="quiz-result-page">
-
         <div className="quiz-result-card">
-
-          <div className="quiz-result-icon">
-            🎉
+          <div className="quiz-result-icon" style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>
+            <FiAlertTriangle />
           </div>
 
-          <h1 className="quiz-result-title">
-            Quiz Completed
-          </h1>
+          <h1 className="quiz-result-title">Quiz terminated</h1>
+
+          <p className="quiz-result-sub">
+            You switched tabs during the quiz.
+          </p>
+
+          <div className="result-buttons">
+            <button
+              className="btn btn-secondary btn-block"
+              onClick={() => navigate("/")}
+            >
+              <FiHome />
+              Back to home
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (showResult) {
+    const percentage = Math.round((score / questions.length) * 100);
+
+    return (
+      <div className="quiz-result-page">
+        <div className="quiz-result-card">
+          <div className="quiz-result-icon">
+            <FiCheckCircle />
+          </div>
+
+          <h1 className="quiz-result-title">Quiz completed</h1>
+
+          <p className="quiz-result-sub">
+            Well done, {user.name}. Here is your result.
+          </p>
 
           <div className="quiz-score">
             {score}/{questions.length}
           </div>
 
           <div className="quiz-percent">
-            Percentage:{" "}
-            {Math.round(
-              (score /
-                questions.length) *
-                100
-            )}
-            %
+            {percentage}% correct
           </div>
 
           <div className="result-buttons">
-
             <button
-              className="result-btn certificate-btn"
+              className="btn btn-primary btn-block"
               onClick={() =>
-                navigate(
-                  "/certificate",
-                  {
-                    state: {
-                      score,
-                      total:
-                        questions.length,
-                    },
-                  }
-                )
+                navigate("/certificate", {
+                  state: { score, total: questions.length },
+                })
               }
             >
-              🎓 Certificate
+              <FiAward />
+              View certificate
             </button>
 
             <button
-              className="result-btn home-btn"
-              onClick={() =>
-                navigate("/")
-              }
+              className="btn btn-secondary btn-block"
+              onClick={() => navigate("/")}
             >
-              🏠 Home
+              <FiHome />
+              Back to home
             </button>
 
             <button
-              className="result-btn logout-btn"
+              className="btn btn-ghost btn-block"
               onClick={logout}
             >
-              🚪 Logout
+              <FiLogOut />
+              Log out
             </button>
-
           </div>
-
         </div>
-
       </div>
     );
   }
 
   return (
     <div className="quiz-page">
-
       <div className="quiz-card">
+        <div className="quiz-topbar">
+          <span className="quiz-meta">
+            Question {currentQuestion + 1} of {questions.length}
+          </span>
 
-        <div className="quiz-header">
-
-          <h3>
-            Welcome, {user.name}
-          </h3>
-
-          <button
-            className="logout-btn"
-            onClick={logout}
+          <span
+            className={`quiz-timer ${timeLeft <= 10 ? "urgent" : ""}`}
           >
-            Logout
-          </button>
-
+            <FiClock />
+            {timeLeft}s
+          </span>
         </div>
 
-        <h2>
-          Question{" "}
-          {currentQuestion + 1}
-          {" "}of{" "}
-          {questions.length}
-        </h2>
-
         <div className="progress-container">
-
           <div
             className="progress-fill"
             style={{
-              width: `${
-                ((currentQuestion +
-                  1) /
-                  questions.length) *
-                100
-              }%`,
+              width: `${((currentQuestion + 1) / questions.length) * 100}%`,
             }}
           />
-
-        </div>
-
-        <div className="timer">
-          ⏳ {timeLeft}s
         </div>
 
         <h2 className="question-text">
-          {
-            questions[
-              currentQuestion
-            ].question
-          }
+          {questions[currentQuestion].question}
         </h2>
 
-        {questions[
-          currentQuestion
-        ].options.map(
-          (option, index) => (
-            <label
-              key={index}
-              className="option"
-            >
-              <input
-                type="radio"
-                name="answer"
-                value={option}
-                checked={
-                  selectedAnswer ===
-                  option
-                }
-                onChange={(e) =>
-                  setSelectedAnswer(
-                    e.target.value
-                  )
-                }
-              />
+        {questions[currentQuestion].options.map((option, index) => (
+          <label
+            key={index}
+            className={`option ${
+              selectedAnswer === option ? "selected" : ""
+            }`}
+          >
+            <input
+              type="radio"
+              name="answer"
+              value={option}
+              checked={selectedAnswer === option}
+              onChange={(e) => setSelectedAnswer(e.target.value)}
+            />
 
-              {option}
-            </label>
-          )
-        )}
+            {option}
+          </label>
+        ))}
 
-        <button
-          className="next-btn"
-          disabled={!selectedAnswer}
-          onClick={handleNext}
-        >
-          {currentQuestion ===
-          questions.length - 1
-            ? "Submit Quiz"
-            : "Next Question"}
-        </button>
+        <div className="quiz-footer">
+          <span className="quiz-score-inline">
+            Score: <strong>{score}</strong>
+          </span>
 
-        <div className="bottom-buttons">
-
-          
-
-         
+          <button
+            className="btn btn-primary"
+            disabled={!selectedAnswer}
+            onClick={handleNext}
+          >
+            {currentQuestion === questions.length - 1
+              ? "Submit quiz"
+              : "Next question"}
+          </button>
         </div>
-
-        <h3 className="score">
-          Current Score: {score}
-        </h3>
-
       </div>
-
     </div>
   );
 }

@@ -1,99 +1,104 @@
-import { useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import "../styles/AdminLogin.css";
-function AdminLogin() {
-  const [username, setUsername] =
-    useState("");
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { FiShield, FiArrowLeft } from "react-icons/fi";
+import "../styles/Auth.css";
 
-  const [password, setPassword] =
-    useState("");
+function AdminLogin() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
 
   const navigate = useNavigate();
 
   const handleLogin = () => {
-
-    if (
-      username === "admin" &&
-      password === "admin123"
-    ) {
-
-      localStorage.setItem(
-        "adminLoggedIn",
-        "true"
-      );
-      localStorage.setItem(
-  "isAdmin",
-  "true"
-);
+    if (username === "admin" && password === "admin123") {
+      localStorage.setItem("adminLoggedIn", "true");
+      localStorage.setItem("isAdmin", "true");
 
       navigate("/admin");
-
     } else {
-
-      alert("Invalid Admin Login");
-
+      alert("Invalid admin credentials.");
     }
   };
 
   return (
-  <div className="admin-login-page">
+    <div className="auth-page">
 
-    <div className="admin-login-card">
+      <div className="auth-card">
 
-      <div className="admin-shield">
-        🛡️
+        <div className="auth-brand">
+          <span className="brand-mark">
+            <FiShield />
+          </span>
+
+          <span className="brand-name">
+            Admin Portal
+          </span>
+        </div>
+
+        <h1 className="auth-title">
+          Administrator sign in
+        </h1>
+
+        <p className="auth-subtitle">
+          Restricted area. Authorized staff only.
+        </p>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleLogin();
+          }}
+        >
+          <div className="field">
+            <label htmlFor="admin-user">Username</label>
+
+            <input
+              id="admin-user"
+              className="input"
+              type="text"
+              placeholder="Admin username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+            />
+          </div>
+
+          <div className="field">
+            <label htmlFor="admin-pass">Password</label>
+
+            <input
+              id="admin-pass"
+              className="input"
+              type="password"
+              placeholder="Enter password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="btn btn-primary btn-block"
+          >
+            Sign in
+          </button>
+        </form>
+
+        <div className="auth-secondary">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => navigate("/")}
+          >
+            <FiArrowLeft />
+
+            Back to home
+          </button>
+        </div>
+
       </div>
 
-      <h1 className="admin-login-title">
-        Admin Portal
-      </h1>
-
-     <input
-  type="text"
-  placeholder="Admin Username"
-  value={username}
-  onChange={(e) => setUsername(e.target.value)}
-  onKeyDown={(e) => {
-    if (e.key === "Enter") {
-      document.getElementById("adminPassword").focus();
-    }
-  }}
-/>
-<input
-  id="adminPassword"
-  type="password"
-  placeholder="Password"
-  value={password}
-  onChange={(e) => setPassword(e.target.value)}
-  onKeyDown={(e) => {
-    if (e.key === "Enter") {
-      handleLogin();
-    }
-  }}
-/>
-
-      <button
-        className="admin-login-btn"
-        onClick={handleLogin}
-      >
-        Login
-      </button>
-
-
-      <p className="admin-note">
-        Authorized Administrators Only
-      </p>
-      <button
-  className="back-btn"
-  onClick={() => navigate("/")}
->
-  ← Home
-</button>
-
     </div>
-
-  </div>
-);
+  );
 }
 
 export default AdminLogin;

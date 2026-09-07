@@ -1,4 +1,13 @@
 import { useNavigate } from "react-router-dom";
+import {
+  FiPlay,
+  FiZap,
+  FiTrendingUp,
+  FiAward,
+  FiBarChart2,
+  FiLogOut,
+  FiArrowRight,
+} from "react-icons/fi";
 import Navbar from "../components/Navbar";
 import "../styles/Home.css";
 
@@ -6,143 +15,155 @@ function Home() {
   const navigate = useNavigate();
 
   const isLoggedIn =
-    localStorage.getItem("isLoggedIn") ===
-    "true";
+    localStorage.getItem("isLoggedIn") === "true";
 
   const logout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("isLoggedIn");
     localStorage.removeItem("token");
 
-    alert("✅ Logout Successful!");
-
     navigate("/");
-    window.location.reload();
   };
 
   return (
-    <>
+    <div className="home-page">
+
       <Navbar />
 
-      <div className="home-page">
+      <section className="hero">
+        <div className="hero-inner">
 
-        <section className="hero">
+          <span className="hero-eyebrow">
+            Live quiz platform
+          </span>
 
-          <h1>
-            🧠 BrainRace Quiz Platform
+          <h1 className="hero-title">
+            Challenge your knowledge.
+            <br />
+
+            Compete in real time.
           </h1>
 
-          <p>
-            Challenge your knowledge,
-            compete with friends,
-            earn certificates and
-            climb the leaderboard.
+          <p className="hero-copy">
+            Create quiz rooms, invite friends with a
+            room code, and climb the leaderboard.
+            Track every attempt and earn certificates
+            as you improve.
           </p>
 
-          <div className="hero-buttons">
-
-            {!isLoggedIn ? (
+          <div className="hero-actions">
+            {isLoggedIn ? (
               <>
                 <button
-                  onClick={() =>
-                    navigate("/login")
-                  }
+                  className="btn btn-primary btn-lg"
+                  onClick={() => navigate("/quiz")}
                 >
-                  User Login
+                  <FiPlay />
+
+                  Start a quiz
                 </button>
 
                 <button
-                  onClick={() =>
-                    navigate("/admin-login")
-                  }
+                  className="btn btn-secondary btn-lg"
+                  onClick={() => navigate("/rooms")}
                 >
-                  Admin Login
+                  Browse rooms
+
+                  <FiArrowRight />
+                </button>
+
+                <button
+                  className="btn btn-ghost btn-lg"
+                  onClick={logout}
+                >
+                  <FiLogOut />
+
+                  Log out
                 </button>
               </>
             ) : (
               <>
                 <button
-                  onClick={() =>
-                    navigate("/quiz")
-                  }
+                  className="btn btn-primary btn-lg"
+                  onClick={() => navigate("/register")}
                 >
-                  ▶ Start Quiz
+                  Create free account
+
+                  <FiArrowRight />
                 </button>
 
                 <button
-                  onClick={() =>
-                    navigate("/profile")
-                  }
+                  className="btn btn-secondary btn-lg"
+                  onClick={() => navigate("/login")}
                 >
-                  👤 Profile
-                </button>
-
-                <button
-                  onClick={() =>
-                    navigate("/leaderboard")
-                  }
-                >
-                  🏆 Leaderboard
-                </button>
-
-                <button
-                  onClick={() =>
-                    navigate("/results")
-                  }
-                >
-                  📊 Results
-                </button>
-
-                <button
-                  onClick={logout}
-                >
-                  🚪 Logout
+                  Log in
                 </button>
               </>
             )}
-
           </div>
 
-        </section>
+        </div>
+      </section>
 
-        <section className="features">
+      <section className="features">
+        <div className="features-inner">
 
           <div className="feature-card">
-            <h2>⚡ Live Quiz</h2>
+            <span className="feature-icon">
+              <FiZap />
+            </span>
+
+            <h3>Live quizzes</h3>
+
             <p>
-              Take interactive quizzes
-              with real-time scoring.
+              Take timed quizzes with instant scoring
+              and tab-switch protection.
             </p>
           </div>
 
           <div className="feature-card">
-            <h2>🏆 Leaderboard</h2>
+            <span className="feature-icon">
+              <FiTrendingUp />
+            </span>
+
+            <h3>Leaderboards</h3>
+
             <p>
-              Compare scores with
-              other participants.
+              Compare scores with other participants
+              across every quiz.
             </p>
           </div>
 
           <div className="feature-card">
-            <h2>🎓 Certificate</h2>
+            <span className="feature-icon">
+              <FiAward />
+            </span>
+
+            <h3>Certificates</h3>
+
             <p>
-              Earn certificates after
-              completing quizzes.
+              Earn a downloadable certificate for
+              every completed quiz.
             </p>
           </div>
 
           <div className="feature-card">
-            <h2>📊 Analytics</h2>
+            <span className="feature-icon">
+              <FiBarChart2 />
+            </span>
+
+            <h3>Analytics</h3>
+
             <p>
-              Track performance and
-              monitor progress.
+              Track attempts, averages and best
+              scores on your profile.
             </p>
           </div>
 
-        </section>
+        </div>
+      </section>
 
-      </div>
-    </>
+    </div>
   );
 }
 
