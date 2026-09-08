@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import {
@@ -7,6 +7,9 @@ import {
   FiLogOut,
   FiAlertTriangle,
   FiCheckCircle,
+  FiXCircle,
+  FiAward,
+  FiLock,
 } from "react-icons/fi";
 import RoomChat from "../components/RoomChat";
 import "../styles/Rooms.css";
@@ -36,11 +39,19 @@ function RoomQuiz() {
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState("");
+  const [answers, setAnswers] = useState([]);
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
   const [submitting, setSubmitting] = useState(false);
+  const [terminated, setTerminated] = useState(false);
+
+  const terminatedRef = useRef(false);
 
   const user = JSON.parse(localStorage.getItem("user")) || { name: "Guest" };
+
+  const roomSettings = room?.settings || {};
+
+  const questionTimer = roomSettings.questionTimer || 30;
 
   useEffect(() => {
     fetchRoom();
@@ -91,13 +102,19 @@ function RoomQuiz() {
     navigate("/rooms");
   };
 
-  const submitScore = async (finalScore) => {
+  const submitScore = async (finalScore, finalAnswers) => {
+    if (submitting) return;
+
     setSubmitting(true);
 
     try {
       await axios.post(
         `${API}/api/rooms/${roomId}/submit`,
-        { score: finalScore, total: room.questions.length },
+        {
+          score: finalScore,
+          total: room.questions.length,
+          answers: finalAnswers,
+        },
         getAuth()
       );
 
@@ -112,31 +129,53 @@ function RoomQuiz() {
   const handleNext = () => {
     let newScore = score;
 
-    if (selectedAnswer === room.questions[currentIndex].answer) {
+    const isCorrect =
+      selectedAnswer === room.questions[currentIndex].answer;
+
+    if (isCorrect) {
       newScore++;
       setScore(newScore);
     }
 
+    const newAnswers = [...answers];
+    newAnswers[currentIndex] = selectedAnswer;
+    setAnswers(newAnswers);
+
     setSelectedAnswer("");
-    setTimeLeft(30);
+    setTimeLeft(questionTimer);
 
     if (currentIndex < room.questions.length - 1) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      submitScore(newScore);
+      submitScore(newScore, newAnswers);
     }
   };
 
+  const me = room?.participants.find(
+    (p) => p.userId === user._id
+  );
+
+  const quizActive =
+    room &&
+    room.status === "active" &&
+    me &&
+    !me.submitted &&
+    !me.removed &&
+    !terminated;
+
+  /* Start every attempt at the room's configured timer */
+
   useEffect(() => {
-    if (
-      !room ||
-      room.status !== "active" ||
-      (room.participants.find((p) => p.userId === user._id) || {})
-        .submitted ||
-      submitting
-    ) {
-      return;
+    if (quizActive) {
+      setTimeLeft(questionTimer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room?.status, room?.roomId]);
+
+  /* Per-question countdown */
+
+  useEffect(() => {
+    if (!quizActive) return;
 
     if (timeLeft === 0) {
       handleNext();
@@ -148,7 +187,101 @@ function RoomQuiz() {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [timeLeft, room, submitting]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeLeft, quizActive]);
+
+  /* Anti-cheat: strict mode terminates the attempt
+     when the participant leaves the quiz window */
+
+  const terminateQuiz = () => {
+    if (terminatedRef.current) return;
+
+    terminatedRef.current = true;
+
+    setTerminated(true);
+
+    // Lock the attempt by submitting the score
+    // earned so far, so a refresh cannot restart it.
+
+    const newAnswers = [...answers];
+    newAnswers[currentIndex] = selectedAnswer;
+
+    const newScore =
+      score +
+      (selectedAnswer === room.questions[currentIndex].answer ? 1 : 0);
+
+    setScore(newScore);
+
+    submitScore(newScore, newAnswers);
+  };
+
+  useEffect(() => {
+    if (!quizActive || roomSettings.strictMode === false) return;
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        terminateQuiz();
+      }
+    };
+
+    const handleBeforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quizActive, roomSettings.strictMode]);
+
+  /* Anti-cheat: block copy, cut, paste, select-all,
+     right click and devtools shortcuts during the quiz */
+
+  useEffect(() => {
+    if (!quizActive) return;
+
+    const prevent = (e) => e.preventDefault();
+
+    const handleKeyDown = (e) => {
+      const key = e.key.toLowerCase();
+
+      if (
+        e.ctrlKey &&
+        ["a", "c", "x", "u", "s", "p"].includes(key)
+      ) {
+        e.preventDefault();
+      }
+
+      if (e.key === "F12") {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener("contextmenu", prevent);
+    document.addEventListener("copy", prevent);
+    document.addEventListener("cut", prevent);
+    document.addEventListener("paste", prevent);
+    document.addEventListener("selectstart", prevent);
+    document.addEventListener("keydown", handleKeyDown);
+
+    document.body.style.userSelect = "none";
+
+    return () => {
+      document.removeEventListener("contextmenu", prevent);
+      document.removeEventListener("copy", prevent);
+      document.removeEventListener("cut", prevent);
+      document.removeEventListener("paste", prevent);
+      document.removeEventListener("selectstart", prevent);
+      document.removeEventListener("keydown", handleKeyDown);
+
+      document.body.style.userSelect = "";
+    };
+  }, [quizActive]);
 
   if (notFound) {
     return (
@@ -212,16 +345,13 @@ function RoomQuiz() {
     );
   }
 
-  const me =
-    room.participants.find((p) => p.userId === user._id) || {};
-
   const isAdminRoom = room.admin.userId === user._id;
 
   const leaderboard = room.participants
     .filter((p) => p.submitted && !p.removed)
     .sort((a, b) => b.score - a.score);
 
-  if (me.removed) {
+  if (me?.removed) {
     return (
       <div className="page">
         <div className="page-inner">
@@ -246,9 +376,45 @@ function RoomQuiz() {
     );
   }
 
+  /* ===== TERMINATED SCREEN ===== */
+
+  if (terminated && room.status === "active" && !me?.submitted) {
+    return (
+      <div className="page">
+        <div className="page-inner narrow">
+          <div className="card empty-state">
+            <span className="empty-icon" style={{ background: "var(--danger-soft)", color: "var(--danger)" }}>
+              <FiAlertTriangle />
+            </span>
+
+            <h3>Quiz terminated</h3>
+
+            <p style={{ marginTop: 8 }}>
+              Reason: <strong>Left the quiz window</strong>
+            </p>
+
+            <p className="muted" style={{ marginTop: 6 }}>
+              Strict mode is enabled for this room. Your score so far has
+              been recorded.
+            </p>
+
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: 16 }}
+              onClick={() => navigate("/rooms")}
+            >
+              <FiArrowLeft />
+              Back to rooms
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   /* ===== QUIZ PHASE ===== */
 
-  if (room.status === "active" && !me.submitted) {
+  if (room.status === "active" && !me?.submitted) {
     if (room.questions.length === 0) {
       return (
         <div className="quiz-result-page">
@@ -331,8 +497,21 @@ function RoomQuiz() {
 
   /* ===== SUBMITTED / ENDED PHASE ===== */
 
-  if (me.submitted || room.status === "ended") {
+  if (me?.submitted || room.status === "ended") {
     const badge = STATUS_BADGE[room.status] || STATUS_BADGE.waiting;
+
+    const threshold = roomSettings.certificateThreshold ?? 70;
+
+    const percentage =
+      me && me.total > 0
+        ? Math.round((me.score / me.total) * 100)
+        : 0;
+
+    const certificateEligible =
+      me?.submitted && percentage >= threshold;
+
+    const allowReview =
+      roomSettings.allowReview !== false && !!me?.submitted;
 
     return (
       <div className="page">
@@ -368,21 +547,66 @@ function RoomQuiz() {
                 </p>
               </div>
 
-              {me.submitted && (
+              {me?.submitted && (
                 <div style={{ textAlign: "right" }}>
                   <div className="stat-value" style={{ fontSize: 32, fontWeight: 700 }}>
                     {me.score}/{me.total}
                   </div>
 
-                  <div className="stat-label">
-                    {me.total > 0
-                      ? Math.round((me.score / me.total) * 100) + "% correct"
-                      : ""}
-                  </div>
+                  <div className="stat-label">{percentage}% correct</div>
                 </div>
               )}
             </div>
           </div>
+
+          {me?.submitted && (
+            <div className="card" style={{ marginBottom: 20 }}>
+              <h3 className="card-title">Certificate</h3>
+
+              {certificateEligible ? (
+                <>
+                  <p className="card-desc">
+                    You scored {percentage}%, above the {threshold}%
+                    requirement. Congratulations!
+                  </p>
+
+                  <button
+                    className="btn btn-primary"
+                    onClick={() =>
+                      navigate("/certificate", {
+                        state: { score: me.score, total: me.total },
+                      })
+                    }
+                  >
+                    <FiAward />
+                    View certificate
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="card-desc">
+                    You need at least <strong>{threshold}%</strong> to earn
+                    the certificate for this room.
+                  </p>
+
+                  <div className="row">
+                    <span className="badge badge-danger">
+                      <FiLock />
+                      Certificate locked
+                    </span>
+
+                    <span className="badge badge-neutral">
+                      Required: {threshold}%
+                    </span>
+
+                    <span className="badge badge-neutral">
+                      Your score: {percentage}%
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
 
           <h2 className="room-section-title">
             Leaderboard
@@ -432,6 +656,51 @@ function RoomQuiz() {
                 </tbody>
               </table>
             </div>
+          )}
+
+          {allowReview && (
+            <>
+              <h2 className="room-section-title">Review answers</h2>
+
+              {room.questions.map((q, index) => {
+                const yourAnswer = me?.answers?.[index];
+
+                const isCorrect = yourAnswer === q.answer;
+
+                return (
+                  <div className="room-question-card" key={index}>
+                    <h4>
+                      Question {index + 1}: {q.question}
+                    </h4>
+
+                    <div className="review-row">
+                      <span className="muted">Your answer:</span>
+
+                      {yourAnswer ? (
+                        <span
+                          className={`badge ${
+                            isCorrect ? "badge-success" : "badge-danger"
+                          }`}
+                        >
+                          {isCorrect ? <FiCheckCircle /> : <FiXCircle />}
+                          {yourAnswer}
+                        </span>
+                      ) : (
+                        <span className="badge badge-neutral">
+                          Not answered
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="review-row">
+                      <span className="muted">Correct answer:</span>
+
+                      <span className="badge badge-success">{q.answer}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
           )}
 
           <h2 className="room-section-title">Chat</h2>
@@ -488,10 +757,32 @@ function RoomQuiz() {
             The quiz will begin automatically — keep this page open.
           </p>
 
-          <span className={`badge ${badge.cls}`}>
-            <span className="status-dot" />
-            {badge.label}
-          </span>
+          <div className="row" style={{ justifyContent: "center", marginBottom: 14 }}>
+            <span className={`badge ${badge.cls}`}>
+              <span className="status-dot" />
+              {badge.label}
+            </span>
+
+            <span className="badge badge-neutral">
+              <FiClock />
+              {questionTimer}s per question
+            </span>
+
+            {roomSettings.strictMode !== false && (
+              <span className="badge badge-warning">Strict mode</span>
+            )}
+
+            <span className="badge badge-neutral">
+              Certificate at {roomSettings.certificateThreshold ?? 70}%
+            </span>
+          </div>
+
+          {roomSettings.strictMode !== false && (
+            <p className="room-code-hint">
+              Leaving this window during the quiz will terminate your
+              attempt.
+            </p>
+          )}
         </div>
 
         <h2 className="room-section-title">

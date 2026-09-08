@@ -1,6 +1,7 @@
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 
 const express = require("express");
 const cors = require("cors");
@@ -13,13 +14,36 @@ app.use(express.json());
 
 const Question = require("./models/Question");
 const Result = require("./models/Result");
+const Otp = require("./models/Otp");
 const auth = require("./middleware/auth");
 const adminAuth = require("./middleware/adminAuth");
+const { sendOtpEmail, smtpConfigured } = require("./utils/mailer");
+const questionBank = require("./data/questionBank");
 
 mongoose
   .connect(process.env.MONGO_URI)
-  .then(() => {
+  .then(async () => {
     console.log("MongoDB Connected");
+
+    // Existing accounts predate OTP verification —
+    // treat them as already verified.
+
+    await User.updateMany(
+      { verified: { $exists: false } },
+      { $set: { verified: true } }
+    );
+
+    // Seed the starter question bank once.
+
+    const count = await Question.countDocuments();
+
+    if (count === 0) {
+      await Question.insertMany(questionBank);
+
+      console.log(
+        `Seeded ${questionBank.length} starter questions`
+      );
+    }
   })
   .catch((err) => {
     console.log(err);
@@ -37,18 +61,111 @@ app.get("/", (req, res) => {
 });
 
 /* =====================
+   OTP HELPERS
+===================== */
+
+const hashOtp = (code) =>
+  crypto
+    .createHash("sha256")
+    .update(String(code))
+    .digest("hex");
+
+// Creates a fresh OTP, invalidates previous ones.
+
+const issueOtp = async (email, purpose) => {
+  const code = String(
+    Math.floor(100000 + Math.random() * 900000)
+  );
+
+  await Otp.updateMany(
+    { email, purpose, consumed: false },
+    { $set: { consumed: true } }
+  );
+
+  await Otp.create({
+    email,
+    purpose,
+    codeHash: hashOtp(code),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+  });
+
+  const sent = await sendOtpEmail(email, code, purpose);
+
+  // In dev mode (no SMTP configured) the caller
+  // shows the OTP directly so the flow is testable.
+
+  return { sent, devCode: sent ? null : code };
+};
+
+// Validates without consuming; tracks attempts.
+
+const checkOtp = async (email, purpose, code) => {
+  const otp = await Otp.findOne({
+    email,
+    purpose,
+    consumed: false,
+  }).sort({ createdAt: -1 });
+
+  if (!otp) {
+    return { ok: false, message: "No active code. Request a new one." };
+  }
+
+  if (otp.expiresAt < new Date()) {
+    return { ok: false, message: "Code expired. Request a new one." };
+  }
+
+  if (otp.attempts >= 5) {
+    return { ok: false, message: "Too many attempts. Request a new code." };
+  }
+
+  if (otp.codeHash !== hashOtp(code)) {
+    otp.attempts += 1;
+
+    await otp.save();
+
+    return { ok: false, message: "Incorrect code" };
+  }
+
+  return { ok: true, otp };
+};
+
+/* =====================
    REGISTER
+   (creates an unverified
+   account, then OTP)
 ===================== */
 
 app.post("/api/register", async (req, res) => {
   try {
-    const { name, email, password } =
-      req.body;
+    const { name, email, password } = req.body;
 
-    const existingUser =
-      await User.findOne({ email });
+    if (!name || !email || !password) {
+      return res.status(400).json({
+        message: "Name, email and password are required",
+      });
+    }
+
+    const existingUser = await User.findOne({ email });
 
     if (existingUser) {
+      if (!existingUser.verified) {
+        // Account exists but was never verified —
+        // resend the code instead of erroring.
+
+        const { sent, devCode } = await issueOtp(
+          email,
+          "register"
+        );
+
+        return res.status(200).json({
+          message: "Verification code re-sent",
+          requiresVerification: true,
+          email,
+          emailSent: sent,
+          devCode,
+        });
+      }
+
       return res.status(400).json({
         message: "User already exists",
       });
@@ -58,14 +175,146 @@ app.post("/api/register", async (req, res) => {
       name,
       email,
       password: await bcrypt.hash(password, 10),
+      verified: false,
+      provider: "local",
     });
 
     await user.save();
 
+    const { sent, devCode } = await issueOtp(email, "register");
+
     res.status(201).json({
-      message: "User Registered",
-      user,
+      message: "Verification code sent to your email",
+      requiresVerification: true,
+      email,
+      emailSent: sent,
+      devCode,
     });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+/* =====================
+   VERIFY OTP
+   purpose=register -> marks the account verified
+   purpose=reset    -> validates only (consumed
+   later by reset-password)
+===================== */
+
+app.post("/api/verify-otp", async (req, res) => {
+  try {
+    const { email, otp, purpose } = req.body;
+
+    if (!email || !otp || !purpose) {
+      return res.status(400).json({
+        message: "email, otp and purpose are required",
+      });
+    }
+
+    const result = await checkOtp(email, purpose, otp);
+
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message });
+    }
+
+    if (purpose === "register") {
+      const user = await User.findOne({ email });
+
+      if (!user) {
+        return res.status(404).json({
+          message: "Account not found",
+        });
+      }
+
+      user.verified = true;
+
+      await user.save();
+
+      result.otp.consumed = true;
+
+      await result.otp.save();
+
+      return res.json({ message: "Email verified. You can log in now." });
+    }
+
+    res.json({ message: "Code verified" });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+/* =====================
+   FORGOT PASSWORD
+   (sends a reset OTP)
+===================== */
+
+app.post("/api/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+
+    // Generic response: never reveal whether the
+    // email is registered.
+
+    if (!user) {
+      return res.json({
+        message:
+          "If that email is registered, a reset code has been sent.",
+      });
+    }
+
+    const { sent, devCode } = await issueOtp(email, "reset");
+
+    res.json({
+      message:
+        "If that email is registered, a reset code has been sent.",
+      emailSent: sent,
+      devCode,
+    });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+/* =====================
+   RESET PASSWORD
+   (consumes a verified
+   reset OTP)
+===================== */
+
+app.post("/api/reset-password", async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        message: "email, otp and newPassword are required",
+      });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+
+    const result = await checkOtp(email, "reset", otp);
+
+    if (!result.ok) {
+      return res.status(400).json({ message: result.message });
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+
+    await user.save();
+
+    result.otp.consumed = true;
+
+    await result.otp.save();
+
+    res.json({ message: "Password updated. Please log in." });
   } catch (error) {
     res.status(500).json(error);
   }
@@ -99,6 +348,21 @@ app.post("/api/login", async (req, res) => {
     if (!user) {
       return res.status(401).json({
         message: "Invalid Credentials",
+      });
+    }
+
+    if (!user.verified) {
+      const { sent, devCode } = await issueOtp(
+        email,
+        "register"
+      );
+
+      return res.status(403).json({
+        message: "Email not verified. A new code has been sent.",
+        requiresVerification: true,
+        email,
+        emailSent: sent,
+        devCode,
       });
     }
 

@@ -150,6 +150,90 @@ router.post("/", auth, async (req, res) => {
   }
 });
 
+// Update Room Settings (Room Admin only, before the quiz starts)
+
+router.put("/:roomId/settings", auth, async (req, res) => {
+  try {
+    const room = await findRoom(
+      req.params.roomId
+    );
+
+    if (!room) {
+      return res
+        .status(404)
+        .json({ message: "Room Not Found" });
+    }
+
+    if (!isRoomAdmin(room, req.user.id)) {
+      return res
+        .status(403)
+        .json({ message: "Room Admin Only" });
+    }
+
+    if (room.status !== "waiting") {
+      return res.status(400).json({
+        message:
+          "Settings can only be changed before the quiz starts",
+      });
+    }
+
+    const {
+      questionTimer,
+      certificateThreshold,
+      allowReview,
+      strictMode,
+    } = req.body;
+
+    if (questionTimer !== undefined) {
+      if (
+        typeof questionTimer !== "number" ||
+        questionTimer < 5 ||
+        questionTimer > 300
+      ) {
+        return res.status(400).json({
+          message:
+            "Timer must be between 5 and 300 seconds",
+        });
+      }
+
+      room.settings.questionTimer = questionTimer;
+    }
+
+    if (certificateThreshold !== undefined) {
+      if (
+        typeof certificateThreshold !== "number" ||
+        certificateThreshold < 10 ||
+        certificateThreshold > 100
+      ) {
+        return res.status(400).json({
+          message:
+            "Certificate threshold must be between 10 and 100",
+        });
+      }
+
+      room.settings.certificateThreshold =
+        certificateThreshold;
+    }
+
+    if (allowReview !== undefined) {
+      room.settings.allowReview = !!allowReview;
+    }
+
+    if (strictMode !== undefined) {
+      room.settings.strictMode = !!strictMode;
+    }
+
+    await room.save();
+
+    res.json({
+      message: "Settings Updated",
+      settings: room.settings,
+    });
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
 // Start Quiz (Room Admin only)
 
 router.post("/:roomId/start", auth, async (req, res) => {
@@ -512,6 +596,11 @@ router.post("/:roomId/submit", auth, async (req, res) => {
     participant.score = req.body.score || 0;
     participant.total =
       req.body.total || room.questions.length;
+
+    if (Array.isArray(req.body.answers)) {
+      participant.answers = req.body.answers;
+    }
+
     participant.submitted = true;
 
     await room.save();
@@ -640,8 +729,13 @@ router.post("/:roomId/chat", auth, async (req, res) => {
 
     await room.save();
 
+    // Return the saved message so the sender can
+    // render it immediately instead of waiting
+    // for the next poll.
+
     res.status(201).json({
       message: "Message Sent",
+      chatMessage: room.chat[room.chat.length - 1],
     });
   } catch (error) {
     res.status(500).json(error);

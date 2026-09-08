@@ -13,27 +13,46 @@ const getAuth = () => ({
 function RoomChat({ roomId }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
 
   const chatBoxRef = useRef(null);
-  const countRef = useRef(0);
+  const seenIdsRef = useRef(new Set());
+
+  const mergeMessages = (incoming) => {
+    const fresh = incoming.filter(
+      (m) => !seenIdsRef.current.has(m._id)
+    );
+
+    if (fresh.length === 0) return;
+
+    fresh.forEach((m) => seenIdsRef.current.add(m._id));
+
+    setMessages((prev) => {
+      const merged = [...prev, ...fresh];
+
+      // Chat is capped at 200 server-side; keep
+      // the newest 200 locally as well.
+      return merged.slice(-200);
+    });
+  };
 
   useEffect(() => {
-    countRef.current = 0;
+    seenIdsRef.current = new Set();
     setMessages([]);
   }, [roomId]);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchChat = async () => {
       try {
         const res = await axios.get(
-          `${API}/api/rooms/${roomId}/chat?after=${countRef.current}`,
+          `${API}/api/rooms/${roomId}/chat?after=0`,
           getAuth()
         );
 
-        if (res.data.length > 0) {
-          countRef.current += res.data.length;
-
-          setMessages((prev) => [...prev, ...res.data]);
+        if (!cancelled) {
+          mergeMessages(res.data);
         }
       } catch (error) {
         console.error(error);
@@ -42,9 +61,12 @@ function RoomChat({ roomId }) {
 
     fetchChat();
 
-    const timer = setInterval(fetchChat, 3000);
+    const timer = setInterval(fetchChat, 2000);
 
-    return () => clearInterval(timer);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [roomId]);
 
   useEffect(() => {
@@ -56,22 +78,34 @@ function RoomChat({ roomId }) {
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!text.trim()) return;
+    const message = text.trim();
 
-    const message = text;
+    if (!message || sending) return;
 
-    setText("");
+    setSending(true);
 
     try {
-      await axios.post(
+      const res = await axios.post(
         `${API}/api/rooms/${roomId}/chat`,
         { message },
         getAuth()
       );
+
+      setText("");
+
+      // Render the sender's message instantly;
+      // mergeMessages de-duplicates it later.
+
+      if (res.data.chatMessage) {
+        mergeMessages([res.data.chatMessage]);
+      }
     } catch (error) {
       alert(
-        error.response?.data?.message || "Could not send message"
+        error.response?.data?.message ||
+          "Could not send message"
       );
+    } finally {
+      setSending(false);
     }
   };
 
@@ -86,9 +120,9 @@ function RoomChat({ roomId }) {
             No messages yet. Say hello.
           </p>
         ) : (
-          messages.map((msg, index) => (
+          messages.map((msg) => (
             <div
-              key={index}
+              key={msg._id}
               className={`chat-msg ${msg.userId === myId ? "own" : ""}`}
             >
               <div className="chat-name">{msg.name}</div>
@@ -105,6 +139,7 @@ function RoomChat({ roomId }) {
           type="text"
           placeholder="Type a message..."
           value={text}
+          maxLength={300}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -113,7 +148,11 @@ function RoomChat({ roomId }) {
           }}
         />
 
-        <button className="btn btn-primary" onClick={sendMessage}>
+        <button
+          className="btn btn-primary"
+          disabled={sending}
+          onClick={sendMessage}
+        >
           <FiSend />
           Send
         </button>

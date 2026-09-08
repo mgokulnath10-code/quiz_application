@@ -9,11 +9,15 @@ import {
   FiPlus,
   FiCopy,
   FiUserMinus,
+  FiSettings,
 } from "react-icons/fi";
 import RoomChat from "../components/RoomChat";
 import "../styles/Rooms.css";
 
 const API = "https://brain-race.onrender.com";
+
+const TIMER_PRESETS = [10, 20, 30, 60];
+const THRESHOLD_OPTIONS = [50, 60, 70, 80, 90];
 
 const getAuth = () => ({
   headers: {
@@ -33,6 +37,16 @@ function RoomAdmin() {
 
   const [room, setRoom] = useState(null);
   const [tab, setTab] = useState("participants");
+
+  const [settings, setSettings] = useState({
+    questionTimer: 30,
+    certificateThreshold: 70,
+    allowReview: true,
+    strictMode: true,
+  });
+  const [timerPreset, setTimerPreset] = useState(30);
+  const [customTimer, setCustomTimer] = useState("");
+  const [settingsDirty, setSettingsDirty] = useState(false);
 
   const [question, setQuestion] = useState("");
   const [option1, setOption1] = useState("");
@@ -56,8 +70,88 @@ function RoomAdmin() {
       const res = await axios.get(`${API}/api/rooms/${roomId}`, getAuth());
 
       setRoom(res.data);
+
+      // Polling must not clobber unsaved local edits.
+      if (!settingsDirty) {
+        const s = res.data.settings || {};
+
+        const timer = s.questionTimer ?? 30;
+
+        setSettings({
+          questionTimer: timer,
+          certificateThreshold: s.certificateThreshold ?? 70,
+          allowReview: s.allowReview !== false,
+          strictMode: s.strictMode !== false,
+        });
+
+        if (TIMER_PRESETS.includes(timer)) {
+          setTimerPreset(timer);
+          setCustomTimer("");
+        } else {
+          setTimerPreset("custom");
+          setCustomTimer(String(timer));
+        }
+      }
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const markSettingsDirty = () => setSettingsDirty(true);
+
+  const applyTimerPreset = (preset) => {
+    markSettingsDirty();
+
+    setTimerPreset(preset);
+
+    if (preset !== "custom") {
+      setSettings((prev) => ({
+        ...prev,
+        questionTimer: preset,
+      }));
+    }
+  };
+
+  const applyCustomTimer = (value) => {
+    markSettingsDirty();
+
+    setCustomTimer(value);
+
+    const num = parseInt(value, 10);
+
+    if (!Number.isNaN(num) && num >= 5 && num <= 300) {
+      setSettings((prev) => ({
+        ...prev,
+        questionTimer: num,
+      }));
+    }
+  };
+
+  const saveSettings = async () => {
+    const invalidTimer =
+      !settings.questionTimer ||
+      settings.questionTimer < 5 ||
+      settings.questionTimer > 300;
+
+    if (invalidTimer) {
+      alert("Custom timer must be between 5 and 300 seconds.");
+      return;
+    }
+
+    try {
+      await axios.put(
+        `${API}/api/rooms/${roomId}/settings`,
+        settings,
+        getAuth()
+      );
+
+      setSettingsDirty(false);
+
+      fetchRoom();
+    } catch (error) {
+      alert(
+        error.response?.data?.message || "Could not save settings"
+      );
     }
   };
 
@@ -318,6 +412,14 @@ function RoomAdmin() {
           >
             Chat
           </button>
+
+          <button
+            className={`tab ${tab === "settings" ? "active" : ""}`}
+            onClick={() => setTab("settings")}
+          >
+            <FiSettings />
+            Settings
+          </button>
         </div>
 
         {tab === "participants" && (
@@ -560,6 +662,168 @@ function RoomAdmin() {
         )}
 
         {tab === "chat" && <RoomChat roomId={room.roomId} />}
+
+        {tab === "settings" && (
+          <div>
+            {room.status !== "waiting" ? (
+              <div
+                className="badge badge-neutral"
+                style={{ marginBottom: 14 }}
+              >
+                Settings are locked once the quiz has started
+              </div>
+            ) : (
+              <p className="muted" style={{ marginBottom: 16 }}>
+                These settings apply only to this room and are locked once
+                you start the quiz.
+              </p>
+            )}
+
+            <div className="card" style={{ marginBottom: 20 }}>
+              <h3 className="card-title">Question timer</h3>
+
+              <p className="card-desc">
+                Time allowed per question for every participant.
+              </p>
+
+              <div className="pill-row">
+                {TIMER_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    className={`pill ${
+                      timerPreset === preset ? "active" : ""
+                    }`}
+                    disabled={room.status !== "waiting"}
+                    onClick={() => applyTimerPreset(preset)}
+                  >
+                    {preset} sec
+                  </button>
+                ))}
+
+                <button
+                  className={`pill ${timerPreset === "custom" ? "active" : ""}`}
+                  disabled={room.status !== "waiting"}
+                  onClick={() => applyTimerPreset("custom")}
+                >
+                  Custom
+                </button>
+
+                {timerPreset === "custom" && (
+                  <input
+                    className="input"
+                    style={{ width: 110 }}
+                    type="number"
+                    min={5}
+                    max={300}
+                    placeholder="Seconds"
+                    value={customTimer}
+                    disabled={room.status !== "waiting"}
+                    onChange={(e) => applyCustomTimer(e.target.value)}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="card" style={{ marginBottom: 20 }}>
+              <h3 className="card-title">Certificate threshold</h3>
+
+              <p className="card-desc">
+                Participants need at least this percentage to earn the
+                certificate.
+              </p>
+
+              <div className="pill-row">
+                {THRESHOLD_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    className={`pill ${
+                      settings.certificateThreshold === option
+                        ? "active"
+                        : ""
+                    }`}
+                    disabled={room.status !== "waiting"}
+                    onClick={() => {
+                      markSettingsDirty();
+                      setSettings((prev) => ({
+                        ...prev,
+                        certificateThreshold: option,
+                      }));
+                    }}
+                  >
+                    {option}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="card" style={{ marginBottom: 20 }}>
+              <h3 className="card-title">Answer review</h3>
+
+              <div className="row between">
+                <p className="card-desc" style={{ marginBottom: 0 }}>
+                  Let participants compare their answers with the correct
+                  ones after they submit.
+                </p>
+
+                <button
+                  className={`btn btn-sm ${
+                    settings.allowReview ? "btn-success" : "btn-secondary"
+                  }`}
+                  disabled={room.status !== "waiting"}
+                  onClick={() => {
+                    markSettingsDirty();
+                    setSettings((prev) => ({
+                      ...prev,
+                      allowReview: !prev.allowReview,
+                    }));
+                  }}
+                >
+                  {settings.allowReview ? "ON" : "OFF"}
+                </button>
+              </div>
+            </div>
+
+            <div className="card" style={{ marginBottom: 20 }}>
+              <h3 className="card-title">Strict mode</h3>
+
+              <div className="row between">
+                <p className="card-desc" style={{ marginBottom: 0 }}>
+                  Leaving the quiz window (tab switch, refresh, close or
+                  navigation) terminates the attempt.
+                </p>
+
+                <button
+                  className={`btn btn-sm ${
+                    settings.strictMode ? "btn-success" : "btn-secondary"
+                  }`}
+                  disabled={room.status !== "waiting"}
+                  onClick={() => {
+                    markSettingsDirty();
+                    setSettings((prev) => ({
+                      ...prev,
+                      strictMode: !prev.strictMode,
+                    }));
+                  }}
+                >
+                  {settings.strictMode ? "ON" : "OFF"}
+                </button>
+              </div>
+            </div>
+
+            {room.status === "waiting" && (
+              <button
+                className="btn btn-primary"
+                disabled={!settingsDirty}
+                onClick={saveSettings}
+                title={
+                  settingsDirty ? "" : "No changes to save"
+                }
+              >
+                Save settings
+              </button>
+            )}
+          </div>
+        )}
 
       </div>
     </div>
