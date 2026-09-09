@@ -453,12 +453,17 @@ app.post("/api/admin/login", async (req, res) => {
 
 // Add Question (Admin only)
 
+// Add Question (Admin only) — difficulty/category/topic aware
+
 app.post("/api/questions", adminAuth, async (req, res) => {
   try {
     const question = new Question({
       question: req.body.question,
       options: req.body.options,
       answer: req.body.answer,
+      difficulty: req.body.difficulty || "easy",
+      category: req.body.category || "programming",
+      topic: (req.body.topic || "general").toLowerCase(),
     });
 
     await question.save();
@@ -489,47 +494,21 @@ app.get("/api/users", adminAuth, async (req, res) => {
   }
 });
 
-app.put(
-  "/api/reset-password",
-  async (req, res) => {
-    try {
-      const { email, password } =
-        req.body;
-
-      const user =
-        await User.findOne({
-          email,
-        });
-
-      if (!user) {
-        return res.status(404).json({
-          message: "User Not Found",
-        });
-      }
-
-      user.password = await bcrypt.hash(
-        password,
-        10
-      );
-
-      await user.save();
-
-      res.json({
-        message:
-          "Password Updated",
-      });
-    } catch (error) {
-      res.status(500).json(error);
-    }
-  }
-);
-
-// Get All Questions
+// Get All Questions (filterable)
 
 app.get("/api/questions", async (req, res) => {
   try {
-    const questions =
-      await Question.find();
+    const filter = {};
+
+    if (req.query.difficulty) {
+      filter.difficulty = req.query.difficulty;
+    }
+
+    if (req.query.topic) {
+      filter.topic = req.query.topic;
+    }
+
+    const questions = await Question.find(filter);
 
     res.json(questions);
   } catch (error) {
@@ -538,6 +517,41 @@ app.get("/api/questions", async (req, res) => {
     res.status(500).json({
       success: false,
     });
+  }
+});
+
+// Available categories / topics / difficulties
+// for the quiz setup wizard.
+
+app.get("/api/questions/meta", async (req, res) => {
+  try {
+    const questions = await Question.find();
+
+    const topics = {};
+
+    questions.forEach((question) => {
+      const topic = question.topic || "general";
+
+      if (!topics[topic]) {
+        topics[topic] = {
+          topic,
+          category: question.category || "general",
+          difficulties: new Set(),
+        };
+      }
+
+      topics[topic].difficulties.add(question.difficulty);
+    });
+
+    const meta = Object.values(topics).map((entry) => ({
+      topic: entry.topic,
+      category: entry.category,
+      difficulties: [...entry.difficulties],
+    }));
+
+    res.json(meta);
+  } catch (error) {
+    res.status(500).json(error);
   }
 });
 
@@ -658,6 +672,214 @@ app.get("/api/results", async (req, res) => {
 ===================== */
 
 app.use("/api/rooms", roomRoutes);
+
+/* =====================
+   OAUTH (Google + Microsoft)
+   Authorization-code flow. Needs
+   GOOGLE_CLIENT_ID / SECRET and
+   MICROSOFT_CLIENT_ID / SECRET in .env.
+   Redirects back to FRONTEND_URL/oauth/callback
+   with token + profile query params.
+===================== */
+
+const providers = () => ({
+  google: {
+    configured: !!(
+      process.env.GOOGLE_CLIENT_ID &&
+      process.env.GOOGLE_CLIENT_SECRET
+    ),
+    authUrl:
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scope: "openid email profile",
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  },
+  microsoft: {
+    configured: !!(
+      process.env.MICROSOFT_CLIENT_ID &&
+      process.env.MICROSOFT_CLIENT_SECRET
+    ),
+    authUrl:
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+    tokenUrl:
+      "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    scope: "openid email profile",
+    clientId: process.env.MICROSOFT_CLIENT_ID,
+    clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+  },
+});
+
+// Which social logins the Login page should show.
+
+app.get("/api/auth/providers", (req, res) => {
+  const config = providers();
+
+  res.json({
+    google: config.google.configured,
+    microsoft: config.microsoft.configured,
+  });
+});
+
+const serverBaseUrl = (req) =>
+  process.env.SERVER_URL ||
+  `${req.protocol}://${req.get("host")}`;
+
+const callbackUrl = (req, providerName) =>
+  `${serverBaseUrl(req)}/api/auth/${providerName}/callback`;
+
+const decodeIdToken = (idToken) => {
+  const payload = idToken.split(".")[1];
+
+  return JSON.parse(
+    Buffer.from(payload, "base64url").toString()
+  );
+};
+
+const oauthStart = (providerName) => (req, res) => {
+  const config = providers()[providerName];
+
+  if (!config.configured) {
+    return res.status(404).json({
+      message: `${providerName} login is not configured`,
+    });
+  }
+
+  const state = crypto.randomBytes(16).toString("hex");
+
+  res.setHeader(
+    "Set-Cookie",
+    `oauth_state=${state}; Path=/; Max-Age=600; SameSite=Lax`
+  );
+
+  const url = new URL(config.authUrl);
+
+  url.searchParams.set("client_id", config.clientId);
+  url.searchParams.set(
+    "redirect_uri",
+    callbackUrl(req, providerName)
+  );
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", config.scope);
+  url.searchParams.set("state", state);
+
+  res.redirect(url.toString());
+};
+
+const oauthCallback = (providerName) => async (req, res) => {
+  try {
+    const config = providers()[providerName];
+
+    const cookies = Object.fromEntries(
+      (req.headers.cookie || "")
+        .split(";")
+        .map((c) => c.trim().split("="))
+        .filter((c) => c[0])
+    );
+
+    if (
+      !req.query.code ||
+      !req.query.state ||
+      req.query.state !== cookies.oauth_state
+    ) {
+      return res.status(400).json({
+        message: "Invalid OAuth state",
+      });
+    }
+
+    const tokenRes = await fetch(config.tokenUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        code: req.query.code,
+        grant_type: "authorization_code",
+        redirect_uri: callbackUrl(req, providerName),
+      }),
+    });
+
+    const tokens = await tokenRes.json();
+
+    if (!tokens.id_token) {
+      return res.status(400).json({
+        message: "OAuth token exchange failed",
+      });
+    }
+
+    const profile = decodeIdToken(tokens.id_token);
+
+    const email = profile.email;
+
+    if (!email) {
+      return res.status(400).json({
+        message: "No email shared by the provider",
+      });
+    }
+
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      user = await User.create({
+        name: profile.name || email.split("@")[0],
+        email,
+        // OAuth accounts never use a local password
+        password: await bcrypt.hash(
+          crypto.randomBytes(24).toString("hex"),
+          10
+        ),
+        verified: true,
+        provider: providerName,
+      });
+    } else if (!user.verified) {
+      user.verified = true;
+
+      user.provider = providerName;
+
+      await user.save();
+    }
+
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    const frontend =
+      process.env.FRONTEND_URL ||
+      `${req.protocol}://${req.get("host")}`;
+
+    const params = new URLSearchParams({
+      token,
+      name: user.name || "",
+      email: user.email,
+    });
+
+    res.redirect(
+      `${frontend}/oauth/callback?${params.toString()}`
+    );
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({ message: "OAuth login failed" });
+  }
+};
+
+app.get("/api/auth/google", oauthStart("google"));
+
+app.get(
+  "/api/auth/google/callback",
+  oauthCallback("google")
+);
+
+app.get("/api/auth/microsoft", oauthStart("microsoft"));
+
+app.get(
+  "/api/auth/microsoft/callback",
+  oauthCallback("microsoft")
+);
 
 /* =====================
    SERVER

@@ -28,6 +28,9 @@ function Admin() {
   const [option3, setOption3] = useState("");
   const [option4, setOption4] = useState("");
   const [answer, setAnswer] = useState("");
+  const [difficulty, setDifficulty] = useState("easy");
+  const [category, setCategory] = useState("programming");
+  const [topic, setTopic] = useState("");
 
   const [questions, setQuestions] = useState([]);
 
@@ -60,7 +63,7 @@ function Admin() {
   };
 
   const saveQuestion = async () => {
-    if (!question || !option1 || !option2 || !option3 || !option4 || !answer) {
+    if (!question || !option1 || !option2 || !option3 || !option4 || !answer || !topic) {
       alert("Please fill in all fields.");
       return;
     }
@@ -72,6 +75,9 @@ function Admin() {
           question,
           options: [option1, option2, option3, option4],
           answer,
+          difficulty,
+          category,
+          topic: topic.toLowerCase().trim(),
         },
         getAdminAuth()
       );
@@ -82,6 +88,7 @@ function Admin() {
       setOption3("");
       setOption4("");
       setAnswer("");
+      setTopic("");
 
       fetchQuestions();
     } catch (error) {
@@ -263,6 +270,50 @@ function Admin() {
             </div>
           </div>
 
+          <div className="options-grid" style={{ marginBottom: 0 }}>
+            <div className="field">
+              <label>Difficulty</label>
+
+              <select
+                className="input"
+                value={difficulty}
+                onChange={(e) => setDifficulty(e.target.value)}
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <div className="field">
+              <label>Category</label>
+
+              <select
+                className="input"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                <option value="programming">Programming</option>
+                <option value="science">Science</option>
+                <option value="mathematics">Mathematics</option>
+                <option value="history">History</option>
+                <option value="general">General</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="field">
+            <label>Topic</label>
+
+            <input
+              className="input"
+              type="text"
+              placeholder="e.g. python, java, javascript"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+            />
+          </div>
+
           <button className="btn btn-primary" onClick={saveQuestion}>
             <FiPlus />
             Save question
@@ -316,6 +367,16 @@ function Admin() {
                 ) : (
                   <>
                     <div className="question-item-body">
+                      <div className="row" style={{ marginBottom: 6 }}>
+                        <span className={`badge diff-${q.difficulty}`}>
+                          {q.difficulty || "easy"}
+                        </span>
+
+                        <span className="badge badge-neutral" style={{ textTransform: "capitalize" }}>
+                          {q.topic || "general"}
+                        </span>
+                      </div>
+
                       <h4>{q.question}</h4>
 
                       <div className="question-options">

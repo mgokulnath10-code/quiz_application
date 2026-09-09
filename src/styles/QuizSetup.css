@@ -1,0 +1,108 @@
+/* Quiz setup wizard */
+
+.setup-steps {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.setup-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.setup-step.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.setup-step.done {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.setup-step-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.setup-step.active .setup-step-dot {
+  background: var(--accent);
+  color: #fff;
+}
+
+.setup-step.done .setup-step-dot {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.setup-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.setup-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font);
+  transition: border-color .15s ease, background .15s ease;
+}
+
+.setup-option:hover {
+  border-color: var(--accent);
+  background: #fafbff;
+}
+
+.setup-option.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.setup-option-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  text-transform: capitalize;
+}
+
+.setup-option-hint {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.diff-easy.setup-option.selected { border-color: var(--success); background: var(--success-soft); }
+.diff-medium.setup-option.selected { border-color: var(--warning); background: var(--warning-soft); }
+.diff-hard.setup-option.selected { border-color: var(--danger); background: var(--danger-soft); }
+
+@media (max-width: 640px) {
+  .setup-steps {
+    flex-wrap: wrap;
+  }
+
+  .setup-options {
+    grid-template-columns: 1fr;
+  }
+}

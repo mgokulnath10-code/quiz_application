@@ -59,6 +59,12 @@
   margin-top: 10px;
 }
 
+/* Difficulty badge colors */
+
+.badge.diff-easy { background: var(--success-soft); color: var(--success); }
+.badge.diff-medium { background: var(--warning-soft); color: var(--warning); }
+.badge.diff-hard { background: var(--danger-soft); color: var(--danger); }
+
 @media (max-width: 640px) {
   .options-grid {
     grid-template-columns: 1fr;

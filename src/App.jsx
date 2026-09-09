@@ -26,6 +26,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
 
 import ForgotPassword from "./pages/ForgotPassword";
+import QuizSetup from "./pages/QuizSetup";
+import OAuthCallback from "./pages/OAuthCallback";
 
 function App() {
 
@@ -45,6 +47,20 @@ function App() {
           <Route
             path="/login"
             element={<Login />}
+          />
+
+          <Route
+            path="/oauth/callback"
+            element={<OAuthCallback />}
+          />
+
+          <Route
+            path="/quiz-setup"
+            element={
+              <ProtectedRoute>
+                <QuizSetup />
+              </ProtectedRoute>
+            }
           />
 
           <Route

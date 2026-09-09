@@ -56,7 +56,7 @@ function Home() {
               <>
                 <button
                   className="btn btn-primary btn-lg"
-                  onClick={() => navigate("/quiz")}
+                  onClick={() => navigate("/quiz-setup")}
                 >
                   <FiPlay />
 

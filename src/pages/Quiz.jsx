@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import {
   FiClock,
@@ -90,19 +90,41 @@ function Quiz() {
   }, []);
 
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Selected in the /quiz-setup wizard
+  const difficulty = location.state?.difficulty;
+  const topic = location.state?.topic;
 
   const user =
     JSON.parse(localStorage.getItem("user")) || { name: "Guest" };
 
   useEffect(() => {
     fetchQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchQuestions = async () => {
     try {
-      const res = await axios.get(`${API}/api/questions`);
+      const res = await axios.get(`${API}/api/questions`, {
+        params: {
+          ...(difficulty ? { difficulty } : {}),
+          ...(topic ? { topic } : {}),
+        },
+      });
 
-      setQuestions(res.data);
+      if (res.data.length > 0) {
+        setQuestions(res.data);
+
+        return;
+      }
+
+      // Nothing matches the selection yet —
+      // fall back to the full bank.
+
+      const fallback = await axios.get(`${API}/api/questions`);
+
+      setQuestions(fallback.data);
     } catch (error) {
       console.error(error);
     }
@@ -265,6 +287,18 @@ function Quiz() {
         <div className="quiz-topbar">
           <span className="quiz-meta">
             Question {currentQuestion + 1} of {questions.length}
+
+            {difficulty && (
+              <span className="badge badge-accent" style={{ marginLeft: 10, textTransform: "capitalize" }}>
+                {difficulty}
+              </span>
+            )}
+
+            {topic && (
+              <span className="badge badge-neutral" style={{ marginLeft: 6, textTransform: "capitalize" }}>
+                {topic}
+              </span>
+            )}
           </span>
 
           <span

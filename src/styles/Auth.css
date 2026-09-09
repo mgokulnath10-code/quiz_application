@@ -107,3 +107,23 @@
   font-size: 12px;
   color: var(--text-3);
 }
+
+/* Social sign-in buttons */
+
+.auth-social {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-social .btn {
+  text-decoration: none;
+}
+
+.auth-social .btn:hover {
+  text-decoration: none;
+}
+
+.auth-social svg {
+  flex-shrink: 0;
+}
