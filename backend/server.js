@@ -14,6 +14,7 @@ app.use(express.json());
 
 const Question = require("./models/Question");
 const Result = require("./models/Result");
+const Room = require("./models/Room");
 const Otp = require("./models/Otp");
 const auth = require("./middleware/auth");
 const adminAuth = require("./middleware/adminAuth");
@@ -44,6 +45,54 @@ mongoose
         `Seeded ${questionBank.length} starter questions`
       );
     }
+
+    // One-time hygiene: strip stray whitespace from
+    // stored questions so answer comparison is exact.
+
+    await Question.updateMany({}, [
+      {
+        $set: {
+          question: { $trim: { input: "$question" } },
+          answer: { $trim: { input: "$answer" } },
+          options: {
+            $map: {
+              input: "$options",
+              as: "option",
+              in: { $trim: { input: "$$option" } },
+            },
+          },
+        },
+      },
+    ]);
+
+    await Room.updateMany({}, [
+      {
+        $set: {
+          questions: {
+            $map: {
+              input: "$questions",
+              as: "q",
+              in: {
+                _id: "$$q._id",
+                question: {
+                  $trim: { input: "$$q.question" },
+                },
+                answer: {
+                  $trim: { input: "$$q.answer" },
+                },
+                options: {
+                  $map: {
+                    input: "$$q.options",
+                    as: "option",
+                    in: { $trim: { input: "$$option" } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
   })
   .catch((err) => {
     console.log(err);
@@ -329,7 +378,25 @@ app.post("/api/reset-password", async (req, res) => {
 
 const verifyPassword = async (stored, given) => {
   if (stored.startsWith("$2")) {
-    return bcrypt.compare(given, stored);
+    if (await bcrypt.compare(given, stored)) {
+      return true;
+    }
+
+    // Recover from passwords registered with a
+    // stray leading/trailing space (common on
+    // mobile keyboards).
+
+    const trimmed = given.trim();
+
+    if (
+      trimmed !== given &&
+      trimmed.length > 0 &&
+      (await bcrypt.compare(trimmed, stored))
+    ) {
+      return true;
+    }
+
+    return false;
   }
 
   return stored === given;
@@ -337,8 +404,11 @@ const verifyPassword = async (stored, given) => {
 
 app.post("/api/login", async (req, res) => {
   try {
-    const { email, password } =
-      req.body;
+    const email = String(
+      req.body.email || ""
+    ).trim();
+
+    const { password } = req.body;
 
     const user =
       await User.findOne({
@@ -458,12 +528,16 @@ app.post("/api/admin/login", async (req, res) => {
 app.post("/api/questions", adminAuth, async (req, res) => {
   try {
     const question = new Question({
-      question: req.body.question,
-      options: req.body.options,
-      answer: req.body.answer,
+      question: String(req.body.question || "").trim(),
+      options: (req.body.options || []).map((option) =>
+        String(option).trim()
+      ),
+      answer: String(req.body.answer || "").trim(),
       difficulty: req.body.difficulty || "easy",
       category: req.body.category || "programming",
-      topic: (req.body.topic || "general").toLowerCase(),
+      topic: String(req.body.topic || "general")
+        .toLowerCase()
+        .trim(),
     });
 
     await question.save();

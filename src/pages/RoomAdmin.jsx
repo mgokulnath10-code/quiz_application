@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import {
@@ -48,6 +48,18 @@ function RoomAdmin() {
   const [customTimer, setCustomTimer] = useState("");
   const [settingsDirty, setSettingsDirty] = useState(false);
 
+  // The 3s room poll captures this ref, not the
+  // render-time state, so unsaved local edits
+  // survive polling.
+
+  const settingsDirtyRef = useRef(false);
+
+  const markDirty = () => {
+    settingsDirtyRef.current = true;
+
+    setSettingsDirty(true);
+  };
+
   const [question, setQuestion] = useState("");
   const [option1, setOption1] = useState("");
   const [option2, setOption2] = useState("");
@@ -72,7 +84,8 @@ function RoomAdmin() {
       setRoom(res.data);
 
       // Polling must not clobber unsaved local edits.
-      if (!settingsDirty) {
+
+      if (!settingsDirtyRef.current) {
         const s = res.data.settings || {};
 
         const timer = s.questionTimer ?? 30;
@@ -97,10 +110,8 @@ function RoomAdmin() {
     }
   };
 
-  const markSettingsDirty = () => setSettingsDirty(true);
-
   const applyTimerPreset = (preset) => {
-    markSettingsDirty();
+    markDirty();
 
     setTimerPreset(preset);
 
@@ -113,7 +124,7 @@ function RoomAdmin() {
   };
 
   const applyCustomTimer = (value) => {
-    markSettingsDirty();
+    markDirty();
 
     setCustomTimer(value);
 
@@ -144,6 +155,11 @@ function RoomAdmin() {
         settings,
         getAuth()
       );
+
+      // Clear the guard only after the server
+      // confirms, so the next poll re-syncs.
+
+      settingsDirtyRef.current = false;
 
       setSettingsDirty(false);
 
@@ -743,7 +759,7 @@ function RoomAdmin() {
                     }`}
                     disabled={room.status !== "waiting"}
                     onClick={() => {
-                      markSettingsDirty();
+                      markDirty();
                       setSettings((prev) => ({
                         ...prev,
                         certificateThreshold: option,
@@ -771,7 +787,7 @@ function RoomAdmin() {
                   }`}
                   disabled={room.status !== "waiting"}
                   onClick={() => {
-                    markSettingsDirty();
+                    markDirty();
                     setSettings((prev) => ({
                       ...prev,
                       allowReview: !prev.allowReview,
@@ -798,7 +814,7 @@ function RoomAdmin() {
                   }`}
                   disabled={room.status !== "waiting"}
                   onClick={() => {
-                    markSettingsDirty();
+                    markDirty();
                     setSettings((prev) => ({
                       ...prev,
                       strictMode: !prev.strictMode,

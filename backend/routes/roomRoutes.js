@@ -408,9 +408,11 @@ router.post(
       }
 
       room.questions.push({
-        question,
-        options,
-        answer,
+        question: String(question).trim(),
+        options: options.map((option) =>
+          String(option).trim()
+        ),
+        answer: String(answer).trim(),
       });
 
       await room.save();
@@ -598,7 +600,9 @@ router.post("/:roomId/submit", auth, async (req, res) => {
       req.body.total || room.questions.length;
 
     if (Array.isArray(req.body.answers)) {
-      participant.answers = req.body.answers;
+      participant.answers = req.body.answers.map(
+        (answer) => String(answer).trim()
+      );
     }
 
     participant.submitted = true;
