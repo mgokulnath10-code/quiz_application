@@ -126,11 +126,16 @@ function RoomQuiz() {
     }
   };
 
+  const isCorrectAnswer = (selected, question) =>
+    String(selected).trim() === String(question.answer).trim();
+
   const handleNext = () => {
     let newScore = score;
 
-    const isCorrect =
-      selectedAnswer === room.questions[currentIndex].answer;
+    const isCorrect = isCorrectAnswer(
+      selectedAnswer,
+      room.questions[currentIndex]
+    );
 
     if (isCorrect) {
       newScore++;
@@ -208,7 +213,12 @@ function RoomQuiz() {
 
     const newScore =
       score +
-      (selectedAnswer === room.questions[currentIndex].answer ? 1 : 0);
+      (isCorrectAnswer(
+        selectedAnswer,
+        room.questions[currentIndex]
+      )
+        ? 1
+        : 0);
 
     setScore(newScore);
 
@@ -665,7 +675,10 @@ function RoomQuiz() {
               {room.questions.map((q, index) => {
                 const yourAnswer = me?.answers?.[index];
 
-                const isCorrect = yourAnswer === q.answer;
+                const isCorrect =
+                  yourAnswer != null &&
+                  String(yourAnswer).trim() ===
+                    String(q.answer).trim();
 
                 return (
                   <div className="room-question-card" key={index}>

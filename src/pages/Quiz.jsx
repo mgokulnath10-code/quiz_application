@@ -154,7 +154,10 @@ function Quiz() {
   const handleNext = async () => {
     let newScore = score;
 
-    if (selectedAnswer === questions[currentQuestion].answer) {
+    if (
+      String(selectedAnswer).trim() ===
+      String(questions[currentQuestion].answer).trim()
+    ) {
       newScore++;
       setScore(newScore);
     }

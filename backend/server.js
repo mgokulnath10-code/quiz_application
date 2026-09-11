@@ -16,9 +16,8 @@ const Question = require("./models/Question");
 const Result = require("./models/Result");
 const Room = require("./models/Room");
 const Otp = require("./models/Otp");
-const auth = require("./middleware/auth");
 const adminAuth = require("./middleware/adminAuth");
-const { sendOtpEmail, smtpConfigured } = require("./utils/mailer");
+const { sendOtpEmail } = require("./utils/mailer");
 const questionBank = require("./data/questionBank");
 
 mongoose
@@ -49,50 +48,58 @@ mongoose
     // One-time hygiene: strip stray whitespace from
     // stored questions so answer comparison is exact.
 
-    await Question.updateMany({}, [
-      {
-        $set: {
-          question: { $trim: { input: "$question" } },
-          answer: { $trim: { input: "$answer" } },
-          options: {
-            $map: {
-              input: "$options",
-              as: "option",
-              in: { $trim: { input: "$$option" } },
+    await Question.updateMany(
+      {},
+      [
+        {
+          $set: {
+            question: { $trim: { input: "$question" } },
+            answer: { $trim: { input: "$answer" } },
+            options: {
+              $map: {
+                input: "$options",
+                as: "option",
+                in: { $trim: { input: "$$option" } },
+              },
             },
           },
         },
-      },
-    ]);
+      ],
+      { updatePipeline: true }
+    );
 
-    await Room.updateMany({}, [
-      {
-        $set: {
-          questions: {
-            $map: {
-              input: "$questions",
-              as: "q",
-              in: {
-                _id: "$$q._id",
-                question: {
-                  $trim: { input: "$$q.question" },
-                },
-                answer: {
-                  $trim: { input: "$$q.answer" },
-                },
-                options: {
-                  $map: {
-                    input: "$$q.options",
-                    as: "option",
-                    in: { $trim: { input: "$$option" } },
+    await Room.updateMany(
+      {},
+      [
+        {
+          $set: {
+            questions: {
+              $map: {
+                input: "$questions",
+                as: "q",
+                in: {
+                  _id: "$$q._id",
+                  question: {
+                    $trim: { input: "$$q.question" },
+                  },
+                  answer: {
+                    $trim: { input: "$$q.answer" },
+                  },
+                  options: {
+                    $map: {
+                      input: "$$q.options",
+                      as: "option",
+                      in: { $trim: { input: "$$option" } },
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
-    ]);
+      ],
+      { updatePipeline: true }
+    );
   })
   .catch((err) => {
     console.log(err);
@@ -378,22 +385,22 @@ app.post("/api/reset-password", async (req, res) => {
 
 const verifyPassword = async (stored, given) => {
   if (stored.startsWith("$2")) {
-    if (await bcrypt.compare(given, stored)) {
-      return true;
-    }
+    // Recover from passwords registered with a stray
+    // leading/trailing space (common on mobile keyboards).
 
-    // Recover from passwords registered with a
-    // stray leading/trailing space (common on
-    // mobile keyboards).
+    const candidates = [
+      ...new Set([
+        given,
+        given.trim(),
+        given + " ",
+        " " + given,
+      ]),
+    ].filter((candidate) => candidate.length > 0);
 
-    const trimmed = given.trim();
-
-    if (
-      trimmed !== given &&
-      trimmed.length > 0 &&
-      (await bcrypt.compare(trimmed, stored))
-    ) {
-      return true;
+    for (const candidate of candidates) {
+      if (await bcrypt.compare(candidate, stored)) {
+        return true;
+      }
     }
 
     return false;

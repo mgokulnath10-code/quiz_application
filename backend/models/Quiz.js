@@ -9,11 +9,3 @@ module.exports = mongoose.model(
   "Quiz",
   quizSchema
 );
-<button
-  onClick={() =>
-    (window.location.href =
-      "/leaderboard")
-  }
->
-  Leaderboard
-</button>

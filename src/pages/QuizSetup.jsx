@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   FiArrowLeft,
-  FiArrowRight,
   FiPlay,
   FiCheck,
 } from "react-icons/fi";

@@ -17,7 +17,6 @@ function ForgotPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [info, setInfo] = useState("");
   const [devCode, setDevCode] = useState("");
 
   // Step 1 — request the reset code. The server
