@@ -13,7 +13,7 @@ import {
 } from "react-icons/fi";
 import "../styles/Rooms.css";
 
-const API = "https://brain-race.onrender.com";
+import API from "../config/api";
 
 const getAuth = () => ({
   headers: {

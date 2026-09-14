@@ -38,6 +38,10 @@ function Navbar() {
         <div className="nav-links">
           {isLoggedIn ? (
             <>
+              <Link to="/dashboard" className="nav-link">
+                Dashboard
+              </Link>
+
               <Link to="/rooms" className="nav-link">
                 Rooms
               </Link>

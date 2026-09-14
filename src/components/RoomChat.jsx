@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { FiSend } from "react-icons/fi";
 
-const API = "https://brain-race.onrender.com";
+import API from "../config/api";
 
 const getAuth = () => ({
   headers: {

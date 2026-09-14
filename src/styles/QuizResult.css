@@ -72,3 +72,72 @@
   flex-direction: column;
   gap: 10px;
 }
+
+/* Wider variant for the breakdown on the solo-quiz result */
+
+.quiz-result-card.quiz-result-wide {
+  width: 560px;
+}
+
+.result-fact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  text-align: left;
+  margin-bottom: 22px;
+}
+
+.result-fact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.result-fact-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.result-fact-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.result-fact-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.result-fact-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.result-rule-list {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+
+.result-rule-list > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
+}
+
+.result-rule-list strong {
+  font-weight: 600;
+  text-align: right;
+}

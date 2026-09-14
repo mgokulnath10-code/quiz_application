@@ -4,7 +4,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { FiZap } from "react-icons/fi";
 import "../styles/Auth.css";
 
-const API = "https://brain-race.onrender.com";
+import API from "../config/api";
 
 // Inline brand marks for the social buttons
 // (Feather has no Google/Microsoft glyphs).
@@ -27,6 +27,35 @@ const MicrosoftIcon = () => (
   </svg>
 );
 
+const GitHubIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      fill="#181717"
+      d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.34-1.3-1.7-1.3-1.7-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.7 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.12 3.05.74.81 1.18 1.84 1.18 3.1 0 4.43-2.69 5.4-5.25 5.69.41.36.78 1.06.78 2.14v3.17c0 .31.2.67.8.56A11.5 11.5 0 0 0 23.5 12A11.5 11.5 0 0 0 12 .5z"
+    />
+  </svg>
+);
+
+const SOCIAL_LABEL = {
+  google: "Google",
+  microsoft: "Microsoft",
+  github: "GitHub",
+};
+
+// Order the buttons appear in, and the icon each one uses.
+const SOCIAL_PROVIDERS = [
+  { key: "google", Icon: GoogleIcon },
+  { key: "microsoft", Icon: MicrosoftIcon },
+  { key: "github", Icon: GitHubIcon },
+];
+
+const UNAVAILABLE_STYLE = {
+  display: "block",
+  whiteSpace: "normal",
+  padding: "6px 12px",
+  textAlign: "center",
+};
+
 function Login() {
   const navigate = useNavigate();
 
@@ -37,6 +66,7 @@ function Login() {
   const [social, setSocial] = useState({
     google: false,
     microsoft: false,
+    github: false,
   });
 
   // null = still loading; true = the providers endpoint failed.
@@ -49,6 +79,7 @@ function Login() {
         setSocial({
           google: !!res.data?.google,
           microsoft: !!res.data?.microsoft,
+          github: !!res.data?.github,
         });
       })
       .catch(() => setProvidersError(true));
@@ -76,6 +107,15 @@ function Login() {
       navigate("/");
     } catch (error) {
       const data = error.response?.data;
+
+      if (data?.code === "ACCOUNT_DISABLED") {
+        alert(
+          data.message ||
+            "This account has been disabled by an administrator."
+        );
+
+        return;
+      }
 
       if (data?.requiresVerification) {
         alert(data.message);
@@ -178,63 +218,36 @@ function Login() {
           {providersError ? (
             <p
               className="badge badge-warning"
-              style={{
-                display: "block",
-                whiteSpace: "normal",
-                padding: "6px 12px",
-                textAlign: "center",
-              }}
+              style={UNAVAILABLE_STYLE}
             >
-              Social sign-in is unavailable: the server could not report
-              its OAuth configuration.
+              Social sign-in is unavailable: the server ({API}) could not
+              report its OAuth configuration.
             </p>
           ) : (
             <>
-              {social.google ? (
-                <a
-                  href={`${API}/api/auth/google`}
-                  className="btn btn-secondary btn-block"
-                >
-                  <GoogleIcon />
-                  Continue with Google
-                </a>
-              ) : (
-                <p
-                  className="badge badge-warning"
-                  style={{
-                    display: "block",
-                    whiteSpace: "normal",
-                    padding: "6px 12px",
-                    textAlign: "center",
-                  }}
-                >
-                  Google sign-in is unavailable: server OAuth is not
-                  configured.
-                </p>
-              )}
+              {SOCIAL_PROVIDERS.map(({ key, Icon }) => {
+                const label = SOCIAL_LABEL[key];
 
-              {social.microsoft ? (
-                <a
-                  href={`${API}/api/auth/microsoft`}
-                  className="btn btn-secondary btn-block"
-                >
-                  <MicrosoftIcon />
-                  Continue with Microsoft
-                </a>
-              ) : (
-                <p
-                  className="badge badge-warning"
-                  style={{
-                    display: "block",
-                    whiteSpace: "normal",
-                    padding: "6px 12px",
-                    textAlign: "center",
-                  }}
-                >
-                  Microsoft sign-in is unavailable: server OAuth is not
-                  configured.
-                </p>
-              )}
+                return social[key] ? (
+                  <a
+                    key={key}
+                    href={`${API}/api/auth/${key}`}
+                    className="btn btn-secondary btn-block"
+                  >
+                    <Icon />
+                    Continue with {label}
+                  </a>
+                ) : (
+                  <p
+                    key={key}
+                    className="badge badge-warning"
+                    style={UNAVAILABLE_STYLE}
+                  >
+                    {label} sign-in is unavailable: OAuth is not configured
+                    on {API}.
+                  </p>
+                );
+              })}
             </>
           )}
         </div>

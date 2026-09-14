@@ -14,7 +14,7 @@ import {
 } from "../utils/adminAuth";
 import "../styles/Rooms.css";
 
-const API = "https://brain-race.onrender.com";
+import API from "../config/api";
 
 const STATUS_BADGE = {
   waiting: { label: "Waiting", cls: "badge-warning" },

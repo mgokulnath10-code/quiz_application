@@ -14,7 +14,8 @@ const app = express();
 app.set("trust proxy", 1);
 
 app.use(cors());
-app.use(express.json());
+// Raised from the 100kb default so an admin can paste / upload a CSV batch.
+app.use(express.json({ limit: "1mb" }));
 
 const Question = require("./models/Question");
 const Result = require("./models/Result");
@@ -22,13 +23,72 @@ const Room = require("./models/Room");
 const Otp = require("./models/Otp");
 const User = require("./models/User");
 const adminAuth = require("./middleware/adminAuth");
+const userAuth = require("./middleware/auth");
 const {
   sendOtpEmail,
   smtpConfigured,
   devOtpAllowed,
   MailDeliveryError,
 } = require("./utils/mailer");
+const {
+  summarizeResults,
+  isFiniteNumber,
+} = require("./utils/resultSummary");
+const {
+  buildAdminAnalytics,
+  buildUserStats,
+} = require("./utils/analytics");
 const questionBank = require("./data/questionBank");
+const {
+  resolveOAuthOrigins,
+  callbackUriFor,
+} = require("./utils/oauthOrigin");
+const {
+  buildStateCookie,
+  validateOAuthState,
+} = require("./utils/oauthState");
+const {
+  PROBE_CODES,
+  PROBE_VERDICTS,
+  classifyProviderProbe,
+  createRateLimiter,
+  diagnosisMessage,
+  buildProbeUrl,
+  probeSupportFor,
+} = require("./utils/oauthDiagnose");
+const {
+  DIFFICULTIES,
+  findDuplicateQuestion,
+  escapeRegExp,
+  buildQuestionImportPreview,
+  questionsToCsv,
+  QUESTION_CSV_TEMPLATE,
+} = require("./utils/questionBank");
+const { toCsv } = require("./utils/csv");
+const { AUDIT_ACTIONS } = require("./utils/auditFormat");
+const { recordAudit } = require("./utils/audit");
+const AuditLog = require("./models/AuditLog");
+
+// Accepts either an admin Bearer token or a raw user token.
+// Keeps the two existing auth contracts intact rather than
+// inventing a third one.
+
+const userOrAdminAuth = (req, res, next) => {
+  const header = req.header("Authorization") || "";
+
+  if (!header) {
+    return res.status(401).json({
+      message: "Access Denied",
+      code: "AUTH_REQUIRED",
+    });
+  }
+
+  if (/^Bearer\s+/i.test(header)) {
+    return adminAuth(req, res, next);
+  }
+
+  return userAuth(req, res, next);
+};
 
 mongoose
   .connect(process.env.MONGO_URI)
@@ -509,10 +569,23 @@ app.post("/api/login", async (req, res) => {
 
       return res.status(403).json({
         message: "Email not verified. A new code has been sent.",
+        code: "EMAIL_NOT_VERIFIED",
         requiresVerification: true,
         email,
         emailSent: sent,
         devCode,
+      });
+    }
+
+    // An admin-disabled account can never log in. Checked
+    // after verification so a locked account still receives
+    // a freshly sent code and then hits this clean 403.
+
+    if (user.disabled) {
+      return res.status(403).json({
+        message:
+          "This account has been disabled by an administrator.",
+        code: "ACCOUNT_DISABLED",
       });
     }
 
@@ -613,6 +686,11 @@ app.post("/api/admin/login", async (req, res) => {
       { expiresIn: "12h" }
     );
 
+    await recordAudit({
+      action: AUDIT_ACTIONS.ADMIN_LOGIN,
+      summary: "Admin signed in",
+    });
+
     res.json({
       message: "Login Successful",
       adminToken,
@@ -631,6 +709,16 @@ app.post("/api/admin/login", async (req, res) => {
 ===================== */
 
 app.get("/api/health/config", (req, res) => {
+  // The exact callback URIs this server would send the provider, so the
+  // operator can copy the right one into Google / Microsoft / GitHub instead
+  // of guessing. These are public OAuth values, not secrets.
+
+  const oauth = resolveOAuthOrigins({
+    requestOrigin: `${req.protocol}://${req.get("host") || ""}`,
+    env: process.env,
+    nodeEnv: process.env.NODE_ENV,
+  });
+
   res.json({
     adminConfigured: !!(
       process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD
@@ -643,9 +731,14 @@ app.get("/api/health/config", (req, res) => {
       process.env.MICROSOFT_CLIENT_ID &&
       process.env.MICROSOFT_CLIENT_SECRET
     ),
+    githubConfigured: !!(
+      process.env.GITHUB_CLIENT_ID &&
+      process.env.GITHUB_CLIENT_SECRET
+    ),
     mongoConnected: mongoose.connection.readyState === 1,
     env: process.env.NODE_ENV || "development",
     devOtpAllowed: devOtpAllowed(),
+    oauthRedirectUris: oauth.redirectUris,
   });
 });
 
@@ -653,13 +746,67 @@ app.get("/api/health/config", (req, res) => {
    QUESTIONS
 ===================== */
 
-// Add Question (Admin only)
+// Shared query helpers for the admin question-bank views. Parsing is
+// defensive: an unparsable page number falls back to 1, and pageSize is
+// capped so a caller cannot ask for the whole bank in one request.
+
+const parsePagination = (query = {}, defaultPageSize = 20) => {
+  const parsedPage = Number.parseInt(query.page, 10);
+  const parsedSize = Number.parseInt(query.pageSize, 10);
+
+  const page = Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+
+  const pageSize = Number.isFinite(parsedSize) && parsedSize > 0
+    ? Math.min(parsedSize, 100)
+    : defaultPageSize;
+
+  return { page, pageSize };
+};
+
+// Turns the admin filters into a Mongo query. `all` means "no filter" so the
+// UI can send its select value verbatim.
+
+const buildQuestionFilter = (query = {}) => {
+  const filter = {};
+
+  const difficulty = String(query.difficulty || "").trim().toLowerCase();
+  const category = String(query.category || "").trim().toLowerCase();
+  const topic = String(query.topic || "").trim().toLowerCase();
+  const search = String(query.search || query.q || "").trim();
+
+  if (difficulty && difficulty !== "all") {
+    filter.difficulty = difficulty;
+  }
+
+  if (category && category !== "all") {
+    filter.category = category;
+  }
+
+  if (topic && topic !== "all") {
+    filter.topic = topic;
+  }
+
+  if (search) {
+    // Input is escaped before it reaches the RegExp, so a search for ".*"
+    // is a literal search rather than a match-everything pattern.
+    const pattern = new RegExp(escapeRegExp(search), "i");
+
+    filter.$or = [
+      { question: pattern },
+      { topic: pattern },
+      { category: pattern },
+      { options: pattern },
+    ];
+  }
+
+  return filter;
+};
 
 // Add Question (Admin only) — difficulty/category/topic aware
 
 app.post("/api/questions", adminAuth, async (req, res) => {
   try {
-    const question = new Question({
+    const candidate = {
       question: String(req.body.question || "").trim(),
       options: (req.body.options || []).map((option) =>
         String(option).trim()
@@ -670,9 +817,63 @@ app.post("/api/questions", adminAuth, async (req, res) => {
       topic: String(req.body.topic || "general")
         .toLowerCase()
         .trim(),
-    });
+    };
+
+    if (!candidate.question || candidate.options.length !== 4) {
+      return res.status(400).json({
+        success: false,
+        message: "A question and exactly 4 options are required.",
+        code: "INVALID_QUESTION",
+      });
+    }
+
+    // Warn about an equivalent question before writing anything. The admin
+    // client must send confirmDuplicate: true to proceed. The candidate
+    // query tolerates whitespace differences; the fingerprint comparison
+    // then decides on the normalised text + option set.
+    if (req.body.confirmDuplicate !== true) {
+      const words = candidate.question
+        .replace(/\s+/g, " ")
+        .split(" ")
+        .map(escapeRegExp);
+
+      const existing = await Question.find({
+        question: new RegExp(`^\\s*${words.join("\\s+")}\\s*$`, "i"),
+      })
+        .select("question options")
+        .lean();
+
+      const duplicate = findDuplicateQuestion(candidate, existing);
+
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+          message: "An equivalent question already exists in the bank.",
+          code: "DUPLICATE_QUESTION",
+          existing: {
+            _id: duplicate._id,
+            question: duplicate.question,
+            options: duplicate.options,
+          },
+        });
+      }
+    }
+
+    const question = new Question(candidate);
 
     await question.save();
+
+    await recordAudit({
+      action: AUDIT_ACTIONS.QUESTION_CREATE,
+      summary: `Created question “${candidate.question}”`,
+      targetType: "question",
+      targetId: String(question._id),
+      meta: {
+        difficulty: question.difficulty,
+        topic: question.topic,
+        confirmedDuplicate: req.body.confirmDuplicate === true,
+      },
+    });
 
     res.status(201).json({
       success: true,
@@ -699,6 +900,110 @@ app.get("/api/users", adminAuth, async (req, res) => {
     res.status(500).json(error);
   }
 });
+
+// Manage Users (Admin only).
+//
+// Accounts are never deleted here — only enabled/disabled —
+// so an attempt history can never be orphaned.
+
+app.get("/api/admin/users", adminAuth, async (req, res) => {
+  try {
+    const [users, results] = await Promise.all([
+      User.find()
+        .select("name email provider verified disabled")
+        .sort({ name: 1 })
+        .lean(),
+      Result.find()
+        .select(
+          "user userId score totalQuestions correct wrong unanswered date"
+        )
+        .lean(),
+    ]);
+
+    res.json({
+      users: buildUserStats(users, results),
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Could not load users. Please try again.",
+      code: "SERVER_ERROR",
+    });
+  }
+});
+
+// Enable / disable an account (Admin only).
+//
+// middleware/auth.js caches the account status briefly, so the
+// cache entry is invalidated below: an already-issued token stops
+// working on the very next request.
+
+app.patch(
+  "/api/admin/users/:id/disabled",
+  adminAuth,
+  async (req, res) => {
+    try {
+      if (typeof req.body.disabled !== "boolean") {
+        return res.status(400).json({
+          message: "disabled must be true or false.",
+          code: "INVALID_STATUS",
+        });
+      }
+
+      if (!mongoose.isValidObjectId(req.params.id)) {
+        return res.status(400).json({
+          message: "That user id is not valid.",
+          code: "INVALID_USER_ID",
+        });
+      }
+
+      const user = await User.findByIdAndUpdate(
+        req.params.id,
+        { $set: { disabled: req.body.disabled } },
+        { new: true }
+      );
+
+      if (!user) {
+        return res.status(404).json({
+          message: "User not found.",
+          code: "USER_NOT_FOUND",
+        });
+      }
+
+      // middleware/auth.js caches account status for a few
+      // seconds on the hot polling paths. Drop this user's entry
+      // so the admin action applies on the very next request.
+      userAuth.invalidateAccount(req.params.id);
+
+      await recordAudit({
+        action: req.body.disabled
+          ? AUDIT_ACTIONS.USER_DISABLE
+          : AUDIT_ACTIONS.USER_ENABLE,
+        summary: req.body.disabled
+          ? `Disabled account ${user.name || user.email}`
+          : `Re-enabled account ${user.name || user.email}`,
+        targetType: "user",
+        targetId: String(user._id),
+      });
+
+      res.json({
+        message: req.body.disabled
+          ? "Account disabled. Existing sessions stop working immediately."
+          : "Account re-enabled.",
+        user,
+      });
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).json({
+        message: "Could not update the account.",
+        code: "SERVER_ERROR",
+      });
+    }
+  }
+);
 
 // Get All Questions (filterable)
 
@@ -761,6 +1066,64 @@ app.get("/api/questions/meta", async (req, res) => {
   }
 });
 
+// Adaptive-difficulty pool: every difficulty for one topic
+// (or category), grouped so the client can step between
+// levels without re-fetching the bank on each answer.
+
+app.get("/api/questions/pool", async (req, res) => {
+  try {
+    const filter = {};
+
+    if (req.query.topic) {
+      filter.topic = String(req.query.topic).toLowerCase().trim();
+    }
+
+    if (req.query.category) {
+      filter.category = String(req.query.category).toLowerCase().trim();
+    }
+
+    if (Object.keys(filter).length === 0) {
+      return res.status(400).json({
+        message: "Provide a topic or a category to build a pool from.",
+        code: "POOL_FILTER_REQUIRED",
+      });
+    }
+
+    const questions = await Question.find(filter);
+
+    const byDifficulty = { easy: [], medium: [], hard: [] };
+    const counts = { easy: 0, medium: 0, hard: 0 };
+
+    questions.forEach((question) => {
+      // Unknown difficulty values are dropped rather than
+      // silently filed under "easy".
+
+      if (!byDifficulty[question.difficulty]) return;
+
+      byDifficulty[question.difficulty].push(question);
+      counts[question.difficulty] += 1;
+    });
+
+    res.json({
+      topic: filter.topic || null,
+      category: filter.category || null,
+      total: questions.length,
+      available: Object.keys(counts).filter(
+        (level) => counts[level] > 0
+      ),
+      counts,
+      byDifficulty,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Could not build the question pool.",
+      code: "SERVER_ERROR",
+    });
+  }
+});
+
 // Update Question (Admin only)
 
 app.put("/api/questions/:id", adminAuth, async (req, res) => {
@@ -772,6 +1135,21 @@ app.put("/api/questions/:id", adminAuth, async (req, res) => {
         { new: true }
       );
 
+    if (!updatedQuestion) {
+      return res.status(404).json({
+        message: "That question no longer exists.",
+        code: "QUESTION_NOT_FOUND",
+      });
+    }
+
+    await recordAudit({
+      action: AUDIT_ACTIONS.QUESTION_UPDATE,
+      summary: `Updated question “${updatedQuestion.question}”`,
+      targetType: "question",
+      targetId: String(updatedQuestion._id),
+      meta: { difficulty: updatedQuestion.difficulty },
+    });
+
     res.json(updatedQuestion);
   } catch (error) {
     res.status(500).json(error);
@@ -782,9 +1160,18 @@ app.put("/api/questions/:id", adminAuth, async (req, res) => {
 
 app.delete("/api/questions/:id", adminAuth, async (req, res) => {
   try {
-    await Question.findByIdAndDelete(
+    const removed = await Question.findByIdAndDelete(
       req.params.id
     );
+
+    await recordAudit({
+      action: AUDIT_ACTIONS.QUESTION_DELETE,
+      summary: removed
+        ? `Deleted question “${removed.question}”`
+        : `Deleted question ${req.params.id}`,
+      targetType: "question",
+      targetId: req.params.id,
+    });
 
     res.json({
       success: true,
@@ -798,6 +1185,219 @@ app.delete("/api/questions/:id", adminAuth, async (req, res) => {
     });
   }
 });
+/* =====================
+   ADMIN QUESTION BANK
+   Server-side search, filter, pagination, CSV export and bulk CSV import.
+   Every route here is admin-only. The public GET /api/questions used by the
+   quiz engine is untouched.
+===================== */
+
+// Paginated, filtered listing. This is what the admin page loads instead of
+// downloading the whole bank.
+
+app.get("/api/admin/questions", adminAuth, async (req, res) => {
+  try {
+    const { page, pageSize } = parsePagination(req.query);
+    const filter = buildQuestionFilter(req.query);
+
+    const total = await Question.countDocuments(filter);
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    // A request for a page past the end (a filter shrank the result set)
+    // is served as the last page rather than an empty one.
+    const currentPage = Math.min(page, totalPages);
+    const skip = (currentPage - 1) * pageSize;
+
+    const [items, topics, categories] = await Promise.all([
+      Question.find(filter)
+        .sort({ _id: -1 })
+        .skip(skip)
+        .limit(pageSize)
+        .lean(),
+      Question.distinct("topic"),
+      Question.distinct("category"),
+    ]);
+
+    res.json({
+      items,
+      total,
+      page: currentPage,
+      pageSize,
+      totalPages,
+      facets: {
+        topics: topics.filter(Boolean).sort(),
+        categories: categories.filter(Boolean).sort(),
+        difficulties: DIFFICULTIES,
+      },
+      appliedFilters: {
+        search: String(req.query.search || "").trim(),
+        difficulty: String(req.query.difficulty || "all"),
+        topic: String(req.query.topic || "all"),
+        category: String(req.query.category || "all"),
+      },
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Could not load the question bank. Please try again.",
+      code: "SERVER_ERROR",
+    });
+  }
+});
+
+// CSV export of the currently filtered view (not just the current page).
+
+app.get("/api/admin/questions/export", adminAuth, async (req, res) => {
+  try {
+    const filter = buildQuestionFilter(req.query);
+
+    const questions = await Question.find(filter)
+      .sort({ _id: -1 })
+      .limit(5000)
+      .lean();
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="brainrace-questions.csv"'
+    );
+
+    res.send(questionsToCsv(questions));
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Could not export the question bank.",
+      code: "SERVER_ERROR",
+    });
+  }
+});
+
+// Downloadable import template.
+
+app.get("/api/admin/questions/template", adminAuth, (req, res) => {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader(
+    "Content-Disposition",
+    'attachment; filename="brainrace-questions-template.csv"'
+  );
+
+  res.send(QUESTION_CSV_TEMPLATE);
+});
+
+const MAX_IMPORT_ROWS = 2000;
+const MAX_IMPORT_CHARS = 750000;
+
+// Dry run by default; writes only when the body carries confirm: true. The
+// preview is recomputed on the confirming request, so what gets written is
+// exactly what the response reports.
+
+app.post("/api/admin/questions/import", adminAuth, async (req, res) => {
+  try {
+    const csvText =
+      typeof req.body?.csv === "string" ? req.body.csv : "";
+    const confirm = req.body?.confirm === true;
+
+    if (!csvText.trim()) {
+      return res.status(400).json({
+        message: "Paste or upload CSV content first.",
+        code: "CSV_REQUIRED",
+      });
+    }
+
+    if (csvText.length > MAX_IMPORT_CHARS) {
+      return res.status(413).json({
+        message: `That CSV is too large. Keep it under ${MAX_IMPORT_CHARS} characters per import and split it into batches.`,
+        code: "CSV_TOO_LARGE",
+      });
+    }
+
+    // Duplicate detection needs the bank's questions. Selecting only the two
+    // compared fields keeps this cheap even on a large bank.
+    const existing = await Question.find()
+      .select("question options")
+      .lean();
+
+    const preview = buildQuestionImportPreview({ csvText, existing });
+
+    if (preview.valid.length > MAX_IMPORT_ROWS) {
+      return res.status(413).json({
+        message: `That import has ${preview.valid.length} valid rows; the limit is ${MAX_IMPORT_ROWS} per import. Split it into batches.`,
+        code: "IMPORT_TOO_LARGE",
+      });
+    }
+
+    if (!confirm) {
+      return res.json({
+        dryRun: true,
+        message: "Preview only — nothing has been written yet.",
+        ...preview,
+      });
+    }
+
+    const added = [];
+    const failed = [];
+
+    // Sequential on purpose: a partial failure is reported per row instead
+    // of a bulk-write error that cannot say which rows landed.
+    for (const row of preview.valid) {
+      try {
+        const created = await Question.create({
+          question: row.question,
+          options: row.options,
+          answer: row.answer,
+          difficulty: row.difficulty,
+          category: row.category,
+          topic: row.topic,
+        });
+
+        added.push({ line: row.line, id: String(created._id) });
+      } catch (error) {
+        failed.push({
+          line: row.line,
+          reason: error.message || "Could not save this row.",
+        });
+      }
+    }
+
+    const skipped = preview.duplicates.length;
+    const rejected = preview.invalid.length;
+
+    await recordAudit({
+      action: AUDIT_ACTIONS.QUESTIONS_IMPORT,
+      summary: `Imported ${added.length} question(s) from CSV (${skipped} duplicate(s) skipped, ${rejected} row(s) rejected, ${failed.length} failed)`,
+      targetType: "questions",
+      meta: {
+        added: added.length,
+        skipped,
+        rejected,
+        failed: failed.length,
+      },
+    });
+
+    res.status(201).json({
+      dryRun: false,
+      message: `Imported ${added.length} question(s).`,
+      added: added.length,
+      skipped,
+      rejected,
+      failed: failed.length,
+      failures: failed,
+      total: preview.total,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Could not process the CSV import.",
+      code: "SERVER_ERROR",
+    });
+  }
+});
+
 /* =====================
    QUIZ API
 ===================== */
@@ -827,16 +1427,136 @@ app.get("/api/quizzes", async (req, res) => {
    RESULTS
 ===================== */
 
-// Save Result
+const RESULT_MODES = ["practice", "exam", "adaptive"];
+const RESULT_DIFFICULTIES = ["easy", "medium", "hard"];
 
-app.post("/api/results", async (req, res) => {
+const toOptionalNumber = (value) => {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
+const toOptionalString = (value, max = 120) => {
+  if (value === null || value === undefined) return undefined;
+
+  const text = String(value).trim();
+
+  if (!text) return undefined;
+
+  return text.slice(0, max);
+};
+
+// Save Result (authenticated).
+//
+// The owner is taken from the verified token, never from the
+// request body — otherwise anyone could file a result under
+// another user's name and poison /api/results/me.
+
+app.post("/api/results", userAuth, async (req, res) => {
   try {
+    const score = toOptionalNumber(req.body.score);
+    const totalQuestions = toOptionalNumber(
+      req.body.totalQuestions
+    );
+
+    if (score === undefined || totalQuestions === undefined) {
+      return res.status(400).json({
+        message: "score and totalQuestions are required numbers.",
+        code: "INVALID_RESULT",
+      });
+    }
+
+    if (totalQuestions <= 0) {
+      return res.status(400).json({
+        message: "totalQuestions must be greater than zero.",
+        code: "INVALID_RESULT",
+      });
+    }
+
+    const mode = toOptionalString(req.body.mode, 20);
+
+    if (mode && !RESULT_MODES.includes(mode)) {
+      return res.status(400).json({
+        message: `mode must be one of: ${RESULT_MODES.join(", ")}.`,
+        code: "INVALID_RESULT",
+      });
+    }
+
+    const difficulty = toOptionalString(
+      req.body.difficulty,
+      20
+    );
+
+    if (
+      difficulty &&
+      !RESULT_DIFFICULTIES.includes(difficulty)
+    ) {
+      return res.status(400).json({
+        message: `difficulty must be one of: ${RESULT_DIFFICULTIES.join(", ")}.`,
+        code: "INVALID_RESULT",
+      });
+    }
+
+    const negativeMarking =
+      toOptionalNumber(req.body.negativeMarking) ?? 0;
+
+    if (negativeMarking < 0 || negativeMarking > 1) {
+      return res.status(400).json({
+        message: "negativeMarking must be between 0 and 1.",
+        code: "INVALID_RESULT",
+      });
+    }
+
+    // Per-question outcomes power the "most missed questions"
+    // admin aggregate. Capped so a single request cannot store
+    // an unbounded array.
+
+    const responses = Array.isArray(req.body.responses)
+      ? req.body.responses
+          .slice(0, 200)
+          .map((entry) => ({
+            questionId: toOptionalString(entry?.questionId),
+            topic: toOptionalString(entry?.topic),
+            difficulty: toOptionalString(entry?.difficulty, 20),
+            outcome: toOptionalString(entry?.outcome, 20),
+          }))
+          .filter((entry) => entry.outcome)
+      : [];
+
+    const progression = Array.isArray(
+      req.body.difficultyProgression
+    )
+      ? req.body.difficultyProgression
+          .slice(0, 200)
+          .map((entry) => ({
+            index: toOptionalNumber(entry?.index),
+            difficulty: toOptionalString(entry?.difficulty, 20),
+          }))
+          .filter((entry) => entry.difficulty)
+      : [];
+
     const result = new Result({
-      user: req.body.user,
-      score: req.body.score,
-      totalQuestions:
-        req.body.totalQuestions,
-      date: req.body.date,
+      user: req.account?.name || req.user.email || "User",
+      userId: String(req.user.id),
+      score,
+      totalQuestions,
+      topic: toOptionalString(req.body.topic, 80),
+      difficulty,
+      mode,
+      correct: toOptionalNumber(req.body.correct),
+      wrong: toOptionalNumber(req.body.wrong),
+      unanswered: toOptionalNumber(req.body.unanswered),
+      negativeMarking,
+      durationSeconds: toOptionalNumber(
+        req.body.durationSeconds
+      ),
+      difficultyProgression: progression,
+      responses,
+      date: req.body.date || new Date(),
     });
 
     await result.save();
@@ -844,31 +1564,88 @@ app.post("/api/results", async (req, res) => {
     res.status(201).json({
       success: true,
       message: "Result Saved",
+      result,
     });
   } catch (error) {
     console.log(error);
 
     res.status(500).json({
       success: false,
+      message: "Could not save the result.",
+      code: "SERVER_ERROR",
     });
   }
 });
 
-// Get Results
+// The caller's own attempts, newest first, with a summary.
+// Documents written before userId existed are matched by the
+// display name of the authenticated account so an existing
+// history is not silently lost.
 
-app.get("/api/results", async (req, res) => {
+app.get("/api/results/me", userAuth, async (req, res) => {
   try {
-    const results =
-      await Result.find().sort({
-        score: -1,
-      });
+    const userId = String(req.user.id);
+    const name = req.account?.name;
+
+    const ownerFilter = name
+      ? {
+          $or: [
+            { userId },
+            { userId: { $exists: false }, user: name },
+            { userId: null, user: name },
+          ],
+        }
+      : { userId };
+
+    const results = await Result.find(ownerFilter)
+      .sort({ date: -1, _id: -1 })
+      .limit(500)
+      .lean();
+
+    const legacyCount = results.filter(
+      (doc) => !doc.userId
+    ).length;
+
+    res.json({
+      results,
+      summary: summarizeResults(results),
+      // So the UI can explain why accuracy uses fewer
+      // attempts than the attempt count.
+      legacyCount,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Could not load your results. Please try again.",
+      code: "SERVER_ERROR",
+    });
+  }
+});
+
+// Get Results (authenticated).
+//
+// Previously this returned every attempt of every user to
+// anonymous callers. It now requires a signed-in user or an
+// admin, and returns a leaderboard-shaped projection only —
+// no per-account detail (topic, difficulty, per-question
+// outcomes) leaves the server here.
+
+app.get("/api/results", userOrAdminAuth, async (req, res) => {
+  try {
+    const results = await Result.find()
+      .select("user score totalQuestions date")
+      .sort({ score: -1, date: -1 })
+      .limit(200)
+      .lean();
 
     res.json(results);
   } catch (error) {
     console.log(error);
 
     res.status(500).json({
-      success: false,
+      message: "Could not load results. Please try again.",
+      code: "SERVER_ERROR",
     });
   }
 });
@@ -877,15 +1654,56 @@ app.get("/api/results", async (req, res) => {
    ROOMS
 ===================== */
 
-app.use("/api/rooms", roomRoutes);
+// Audit the two main-admin room mutations. roomRoutes.js is out of scope for
+// this change, so the observation happens here, before the router. The write
+// is fire-and-forget after a successful response: a failed audit write can
+// never turn a completed force-end/delete into an error for the admin.
+
+const auditRoomAdminAction = (req, res, next) => {
+  const ending =
+    req.method === "POST" && /^\/admin\/[^/]+\/end\/?$/.test(req.path);
+
+  const removing =
+    req.method === "DELETE" && /^\/admin\/[^/]+\/?$/.test(req.path);
+
+  if (!ending && !removing) return next();
+
+  res.on("finish", () => {
+    if (res.statusCode >= 400) return;
+
+    const roomId = decodeURIComponent(
+      req.path.replace(/^\/admin\//, "").replace(/\/(end\/?)?$/, "")
+    );
+
+    recordAudit({
+      action: ending
+        ? AUDIT_ACTIONS.ROOM_FORCE_END
+        : AUDIT_ACTIONS.ROOM_DELETE,
+      summary: ending
+        ? `Force-ended room ${roomId}`
+        : `Deleted room ${roomId}`,
+      targetType: "room",
+      targetId: roomId,
+    });
+  });
+
+  next();
+};
+
+app.use("/api/rooms", auditRoomAdminAction, roomRoutes);
 
 /* =====================
-   OAUTH (Google + Microsoft)
+   OAUTH (Google + Microsoft + GitHub)
    Authorization-code flow. Needs
-   GOOGLE_CLIENT_ID / SECRET and
-   MICROSOFT_CLIENT_ID / SECRET in .env.
+   GOOGLE_CLIENT_ID / SECRET,
+   MICROSOFT_CLIENT_ID / SECRET and/or
+   GITHUB_CLIENT_ID / SECRET in .env.
    Redirects back to FRONTEND_URL/oauth/callback
    with token + profile query params.
+
+   GitHub is OAuth2 only (no OIDC id_token), so its
+   callback takes a separate branch that reads the
+   profile from api.github.com with the access token.
 ===================== */
 
 const providers = () => ({
@@ -914,6 +1732,19 @@ const providers = () => ({
     clientId: process.env.MICROSOFT_CLIENT_ID,
     clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
   },
+  github: {
+    configured: !!(
+      process.env.GITHUB_CLIENT_ID &&
+      process.env.GITHUB_CLIENT_SECRET
+    ),
+    authUrl: "https://github.com/login/oauth/authorize",
+    tokenUrl: "https://github.com/login/oauth/access_token",
+    // GitHub needs user:email (or a public address) to hand
+    // back a verified address.
+    scope: "read:user user:email",
+    clientId: process.env.GITHUB_CLIENT_ID,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET,
+  },
 });
 
 // Which social logins the Login page should show.
@@ -924,46 +1755,39 @@ app.get("/api/auth/providers", (req, res) => {
   res.json({
     google: config.google.configured,
     microsoft: config.microsoft.configured,
+    github: config.github.configured,
   });
 });
 
 const frontendBaseUrl = (req) =>
-  (process.env.FRONTEND_URL ||
-    `${req.protocol}://${req.get("host")}`
-  ).replace(/\/+$/, "");
+  resolveOAuthOrigins({
+    requestOrigin: `${req.protocol}://${req.get("host") || ""}`,
+    env: process.env,
+    nodeEnv: process.env.NODE_ENV,
+  }).frontendOrigin;
 
-const serverBaseUrl = (req) =>
-  (process.env.SERVER_URL ||
-    `${req.protocol}://${req.get("host")}`
-  ).replace(/\/+$/, "");
+// The origin this request is actually being served from, judged against the
+// OAUTH_ALLOWED_ORIGINS / SERVER_URL / FRONTEND_URL allowlist (plus loopback
+// hosts outside production). A Host header that is not allowlisted is
+// ignored, so the redirect target can never be attacker-controlled.
 
-// Registered at the provider console — MUST match exactly.
 const callbackUrl = (req, providerName) =>
-  `${serverBaseUrl(req)}/api/auth/${providerName}/callback`;
+  callbackUriFor(
+    resolveOAuthOrigins({
+      requestOrigin: `${req.protocol}://${req.get("host") || ""}`,
+      env: process.env,
+      nodeEnv: process.env.NODE_ENV,
+    }).apiOrigin,
+    providerName
+  );
 
-// Cookie parsing that tolerates "=" inside values.
-
-const parseCookies = (header) =>
-  (header || "")
-    .split(";")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .reduce((acc, part) => {
-      const index = part.indexOf("=");
-
-      if (index === -1) return acc;
-
-      acc[part.slice(0, index).trim()] = part
-        .slice(index + 1)
-        .trim();
-
-      return acc;
-    }, {});
-
-const stateCookie = (req, value, maxAge) =>
-  `oauth_state=${value}; Path=/; Max-Age=${maxAge}; ` +
-  `SameSite=Lax; HttpOnly` +
-  (req.secure || req.protocol === "https" ? "; Secure" : "");
+// Cookie parsing and the state cookie shape live in
+// utils/oauthState.js so the state rules can be self-checked without a server.
+// Two behaviours changed with that move: the cookie is named per provider
+// (`oauth_state_google`, not a shared `oauth_state`), so a sign-in started with
+// one provider — or in another tab — cannot invalidate another; and the cookie
+// is cleared only *after* the state check succeeds, so a stray or replayed
+// callback cannot destroy a legitimate concurrent attempt.
 
 // id_token payload decode with structure validation.
 
@@ -985,9 +1809,20 @@ const decodeIdToken = (idToken) => {
 // a page instead of raw JSON on the API host.
 
 const redirectOAuthError = (req, res, message) => {
-  const url = new URL(
-    `${frontendBaseUrl(req)}/oauth/callback`
-  );
+  const base = frontendBaseUrl(req);
+
+  // Every allowlisted path failed, so there is nowhere safe to send the
+  // browser. Say so instead of falling back to a forged Host header.
+  if (!base) {
+    return res.status(503).json({
+      message:
+        "No frontend origin is configured for OAuth returns. Set " +
+        "FRONTEND_URL or add the origin to OAUTH_ALLOWED_ORIGINS.",
+      code: "OAUTH_ORIGIN_NOT_CONFIGURED",
+    });
+  }
+
+  const url = new URL(`${base}/oauth/callback`);
 
   url.searchParams.set("error", message);
 
@@ -1004,20 +1839,38 @@ const oauthStart = (providerName) => (req, res) => {
     });
   }
 
+  // The redirect_uri must match a URI registered at the provider console.
+  // If this server has no usable origin, fail with a clear message rather
+  // than sending the provider a URI it will reject. Resolved before the state
+  // cookie is written so a request that cannot proceed leaves no cookie behind.
+
+  const redirectUri = callbackUrl(req, providerName);
+
+  if (!redirectUri) {
+    return res.status(503).json({
+      message:
+        `No public origin is configured for ${providerName} sign-in. ` +
+        "Set SERVER_URL (or OAUTH_ALLOWED_ORIGINS) to this server's URL.",
+      code: "OAUTH_ORIGIN_NOT_CONFIGURED",
+    });
+  }
+
   const state = crypto.randomBytes(16).toString("hex");
 
   res.setHeader(
     "Set-Cookie",
-    stateCookie(req, state, 600)
+    buildStateCookie({
+      provider: providerName,
+      value: state,
+      maxAge: 600,
+      secure: req.secure || req.protocol === "https",
+    })
   );
 
   const url = new URL(config.authUrl);
 
   url.searchParams.set("client_id", config.clientId);
-  url.searchParams.set(
-    "redirect_uri",
-    callbackUrl(req, providerName)
-  );
+  url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", config.scope);
   url.searchParams.set("state", state);
@@ -1033,6 +1886,73 @@ const oauthStart = (providerName) => (req, res) => {
   res.redirect(url.toString());
 };
 
+// GitHub has no OIDC id_token. The profile comes from
+// POST-free REST calls with the access token, and the primary
+// *verified* address has to be read from /user/emails —
+// /user only exposes whatever the user chose to publish.
+//
+// Returns { email, name } or null.
+
+const fetchGithubProfile = async (accessToken) => {
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/vnd.github+json",
+    "User-Agent": "BrainRace",
+  };
+
+  const userRes = await fetch("https://api.github.com/user", {
+    headers,
+  });
+
+  if (!userRes.ok) {
+    console.error(
+      "[OAUTH github] profile lookup failed:",
+      userRes.status
+    );
+
+    return null;
+  }
+
+  const profile = await userRes.json();
+
+  const emailRes = await fetch(
+    "https://api.github.com/user/emails",
+    { headers }
+  );
+
+  if (!emailRes.ok) {
+    console.error(
+      "[OAUTH github] email lookup failed:",
+      emailRes.status
+    );
+
+    return null;
+  }
+
+  const addresses = await emailRes.json();
+
+  if (!Array.isArray(addresses)) return null;
+
+  const verified = addresses.filter(
+    (entry) =>
+      entry && entry.verified === true && entry.email
+  );
+
+  const chosen =
+    verified.find((entry) => entry.primary === true) ||
+    verified[0];
+
+  if (!chosen) return null;
+
+  const login = String(profile.login || "").trim();
+  const name = String(profile.name || "").trim();
+
+  return {
+    email: String(chosen.email).trim().toLowerCase(),
+    name: name || login || String(chosen.email).split("@")[0],
+  };
+};
+
 const oauthCallback = (providerName) => async (req, res) => {
   try {
     const config = providers()[providerName];
@@ -1045,31 +1965,43 @@ const oauthCallback = (providerName) => async (req, res) => {
       );
     }
 
-    const cookies = parseCookies(req.headers.cookie);
+    // The state check is the single-use CSRF guard. Each failure mode gets its
+    // own message, because "The sign-in request expired" used to cover a
+    // provider refusal, a missing code, a missing cookie and a genuine mismatch
+    // alike — which left the next occurrence undiagnosable.
 
-    // The state cookie is single-use.
+    const stateCheck = validateOAuthState({
+      provider: providerName,
+      query: req.query,
+      cookieHeader: req.headers.cookie,
+    });
+
+    if (!stateCheck.ok) {
+      return redirectOAuthError(req, res, stateCheck.message);
+    }
+
+    // Cleared here, after the check has passed — so a duplicate, refreshed or
+    // prefetched callback cannot destroy a legitimate concurrent attempt — and
+    // before the token exchange, which is what keeps the state single-use.
 
     res.setHeader(
       "Set-Cookie",
-      stateCookie(req, "", 0)
+      buildStateCookie({
+        provider: providerName,
+        value: "",
+        maxAge: 0,
+        secure: req.secure || req.protocol === "https",
+      })
     );
-
-    if (
-      !req.query.code ||
-      !req.query.state ||
-      req.query.state !== cookies.oauth_state
-    ) {
-      return redirectOAuthError(
-        req,
-        res,
-        "The sign-in request expired. Please try again."
-      );
-    }
 
     const tokenRes = await fetch(config.tokenUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
+        // GitHub answers form-encoded unless JSON is asked for.
+        Accept: "application/json",
+        // GitHub rejects token requests without a User-Agent.
+        "User-Agent": "BrainRace",
       },
       body: new URLSearchParams({
         client_id: config.clientId,
@@ -1082,57 +2014,105 @@ const oauthCallback = (providerName) => async (req, res) => {
 
     const tokens = await tokenRes.json();
 
-    if (!tokenRes.ok || !tokens.id_token) {
-      console.error(
-        `[OAUTH ${providerName}] token exchange failed:`,
-        tokens.error_description ||
-          tokens.error ||
-          tokenRes.status
+    let displayName = "";
+    let resolvedEmail = "";
+
+    if (providerName === "github") {
+      // GitHub is OAuth2 only — there is no id_token to
+      // decode, so the profile is read from the REST API
+      // with the access token instead.
+
+      if (!tokenRes.ok || !tokens.access_token) {
+        console.error(
+          "[OAUTH github] token exchange failed:",
+          tokens.error_description ||
+            tokens.error ||
+            tokenRes.status
+        );
+
+        return redirectOAuthError(
+          req,
+          res,
+          "Could not complete sign-in with GitHub. Please try again."
+        );
+      }
+
+      const profile = await fetchGithubProfile(
+        tokens.access_token
       );
 
-      return redirectOAuthError(
-        req,
-        res,
-        "Could not complete sign-in with the provider. Please try again."
-      );
+      if (!profile) {
+        return redirectOAuthError(
+          req,
+          res,
+          "GitHub did not share a verified email address for " +
+            "this account. Add and verify an email on GitHub, " +
+            "then try again."
+        );
+      }
+
+      resolvedEmail = profile.email;
+      displayName = profile.name;
+    } else {
+      if (!tokenRes.ok || !tokens.id_token) {
+        console.error(
+          `[OAUTH ${providerName}] token exchange failed:`,
+          tokens.error_description ||
+            tokens.error ||
+            tokenRes.status
+        );
+
+        return redirectOAuthError(
+          req,
+          res,
+          "Could not complete sign-in with the provider. Please try again."
+        );
+      }
+
+      const profile = decodeIdToken(tokens.id_token);
+
+      if (!profile) {
+        return redirectOAuthError(
+          req,
+          res,
+          "The provider returned an unreadable profile."
+        );
+      }
+
+      // Google marks whether it has verified the address.
+      // Only trust it when the provider says the email is verified.
+
+      if (
+        profile.email_verified === false ||
+        profile.email_verified === "false"
+      ) {
+        return redirectOAuthError(
+          req,
+          res,
+          "Your provider account has no verified email address."
+        );
+      }
+
+      // Microsoft may omit `email` from the id_token and
+      // expose preferred_username / upn instead.
+
+      resolvedEmail = String(
+        profile.email ||
+          profile.preferred_username ||
+          profile.upn ||
+          profile.unique_name ||
+          ""
+      ).trim();
+
+      displayName = String(
+        profile.name ||
+          profile.given_name ||
+          resolvedEmail.split("@")[0] ||
+          ""
+      ).trim();
     }
 
-    const profile = decodeIdToken(tokens.id_token);
-
-    if (!profile) {
-      return redirectOAuthError(
-        req,
-        res,
-        "The provider returned an unreadable profile."
-      );
-    }
-
-    // Google marks whether it has verified the address.
-    // Only trust it when the provider says the email is verified.
-
-    if (
-      profile.email_verified === false ||
-      profile.email_verified === "false"
-    ) {
-      return redirectOAuthError(
-        req,
-        res,
-        "Your provider account has no verified email address."
-      );
-    }
-
-    // Microsoft may omit `email` from the id_token and
-    // expose preferred_username / upn instead.
-
-    const email = String(
-      profile.email ||
-        profile.preferred_username ||
-        profile.upn ||
-        profile.unique_name ||
-        ""
-    ).trim();
-
-    if (!email) {
+    if (!resolvedEmail) {
       return redirectOAuthError(
         req,
         res,
@@ -1140,15 +2120,26 @@ const oauthCallback = (providerName) => async (req, res) => {
       );
     }
 
-    let user = await User.findOne({ email });
+    let user = await User.findOne({ email: resolvedEmail });
+
+    // A disabled account cannot sign in through any provider.
+    // Checked before the new-account branch so a lock is not
+    // bypassed by simply re-running the OAuth flow.
+
+    if (user && user.disabled) {
+      return redirectOAuthError(
+        req,
+        res,
+        "This account has been disabled by an administrator."
+      );
+    }
 
     if (!user) {
       user = await User.create({
         name:
-          profile.name ||
-          profile.given_name ||
-          email.split("@")[0],
-        email,
+          displayName ||
+          resolvedEmail.split("@")[0],
+        email: resolvedEmail,
         // OAuth accounts never use a local password
         password: await bcrypt.hash(
           crypto.randomBytes(24).toString("hex"),
@@ -1178,8 +2169,19 @@ const oauthCallback = (providerName) => async (req, res) => {
       email: user.email,
     });
 
+    const returnBase = frontendBaseUrl(req);
+
+    if (!returnBase) {
+      return res.status(503).json({
+        message:
+          "Sign-in succeeded but no frontend origin is configured to " +
+          "return to. Set FRONTEND_URL or OAUTH_ALLOWED_ORIGINS.",
+        code: "OAUTH_ORIGIN_NOT_CONFIGURED",
+      });
+    }
+
     res.redirect(
-      `${frontendBaseUrl(req)}/oauth/callback?${params.toString()}`
+      `${returnBase}/oauth/callback?${params.toString()}`
     );
   } catch (error) {
     console.log(error);
@@ -1206,43 +2208,490 @@ app.get(
   oauthCallback("microsoft")
 );
 
+app.get("/api/auth/github", oauthStart("github"));
+
+app.get(
+  "/api/auth/github/callback",
+  oauthCallback("github")
+);
+
+/* =====================
+   OAUTH REDIRECT-URI DIAGNOSIS
+
+   GET /api/auth/:provider/diagnose
+
+   Answers "will the provider accept the redirect_uri we send?" without
+   bouncing a user to the provider first. A `redirect_uri_mismatch` is
+   otherwise invisible until someone tries to sign in and lands on the
+   provider's own error page, which never tells our server anything.
+
+   The outbound URL is assembled only from a hardcoded provider endpoint in
+   `providers()`, the configured client id and the computed redirect URI.
+   No part of the request can change the host or the path, so this cannot be
+   pointed at an arbitrary address. No secret is sent: the client secret is not
+   needed to have the authorize endpoint validate a redirect URI.
+
+   Bounded on purpose — this endpoint makes an outbound request, so it carries
+   a per-caller and a global in-memory limit, and a 10s timeout.
+===================== */
+
+const PROBE_TIMEOUT_MS = 10000;
+
+// Per caller, so one visitor cannot use the panel as a request amplifier.
+const diagnoseLimiter = createRateLimiter({
+  limit: 8,
+  windowMs: 60000,
+  maxKeys: 200,
+});
+
+// Across all callers, so a distributed caller cannot do it either. Kept well
+// above three providers per click so the panel still works behind one NAT.
+const diagnoseGlobalLimiter = createRateLimiter({
+  limit: 40,
+  windowMs: 60000,
+  maxKeys: 4,
+});
+
+// One bounded outbound call. Returns the response the classifier needs, or a
+// failure sentinel the caller turns into an `unknown` verdict.
+const probeProviderAuthorize = async ({
+  authUrl,
+  clientId,
+  redirectUri,
+}) => {
+  const url = buildProbeUrl({
+    authUrl,
+    clientId,
+    redirectUri,
+    state: crypto.randomBytes(16).toString("hex"),
+  });
+
+  const controller = new AbortController();
+
+  const timer = setTimeout(
+    () => controller.abort(),
+    PROBE_TIMEOUT_MS
+  );
+
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: { "User-Agent": "BrainRace-diagnose" },
+    });
+
+    // Read the whole body. Google's error page is ~800 KB and the
+    // `redirect_uri_mismatch` marker sits near the end of it, so truncating
+    // here would make a failing check look like a passing one.
+    const body = await response.text();
+
+    return {
+      finalUrl: response.url,
+      body,
+      status: response.status,
+      failure: null,
+    };
+  } catch (error) {
+    const aborted = error && error.name === "AbortError";
+
+    console.error(
+      "[OAUTH diagnose] probe failed:",
+      aborted ? "timeout" : (error && error.message) || error
+    );
+
+    return {
+      finalUrl: "",
+      body: "",
+      status: 0,
+      failure: aborted
+        ? PROBE_CODES.PROBE_TIMEOUT
+        : PROBE_CODES.PROBE_FAILED,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+app.get("/api/auth/:provider/diagnose", async (req, res) => {
+  const provider = String(req.params.provider || "").toLowerCase();
+
+  const config = providers()[provider];
+
+  // An unrecognised provider is rejected before any budget is spent.
+  if (!config) {
+    return res.status(404).json({
+      message:
+        "Unknown sign-in provider. Supported values are google, microsoft " +
+        "and github.",
+      code: "PROVIDER_UNKNOWN",
+    });
+  }
+
+  const caller = req.ip || "unknown";
+
+  const callerGate = diagnoseLimiter.check(caller);
+  const globalGate = diagnoseGlobalLimiter.check("global");
+
+  if (!callerGate.allowed || !globalGate.allowed) {
+    const retryAfterMs = Math.max(
+      callerGate.retryAfterMs,
+      globalGate.retryAfterMs,
+      1000
+    );
+
+    return res.status(429).json({
+      message:
+        "Too many provider checks in a short time. Wait a moment and run " +
+        "the check again.",
+      code: "RATE_LIMITED",
+      retryAfterMs,
+    });
+  }
+
+  // The redirect URI this server would actually send. Allowlist-derived, so it
+  // is never a value the caller supplied.
+  const redirectUri = callbackUrl(req, provider);
+
+  const support = probeSupportFor(provider);
+
+  const base = {
+    provider,
+    configured: config.configured,
+    supported: support.supported,
+    supportReason: support.reason,
+    redirectUri,
+    checkedAt: new Date().toISOString(),
+  };
+
+  const respond = (verdict, code, message) =>
+    res.json({ ...base, verdict, code, message });
+
+  if (!config.configured) {
+    return respond(
+      PROBE_VERDICTS.NOT_CONFIGURED,
+      PROBE_CODES.NOT_CONFIGURED,
+      diagnosisMessage({
+        provider,
+        verdict: PROBE_VERDICTS.NOT_CONFIGURED,
+        redirectUri,
+        code: PROBE_CODES.NOT_CONFIGURED,
+      })
+    );
+  }
+
+  if (!support.supported) {
+    return respond(
+      PROBE_VERDICTS.UNKNOWN,
+      PROBE_CODES.PROBE_NOT_SUPPORTED,
+      diagnosisMessage({
+        provider,
+        verdict: PROBE_VERDICTS.UNKNOWN,
+        redirectUri,
+        code: PROBE_CODES.PROBE_NOT_SUPPORTED,
+        supportReason:
+          `${support.reason} This server will not report a verdict it ` +
+          "cannot stand behind.",
+      })
+    );
+  }
+
+  if (!redirectUri) {
+    return respond(
+      PROBE_VERDICTS.UNKNOWN,
+      PROBE_CODES.NO_REDIRECT_URI,
+      "No public origin is configured for this server, so there is no " +
+        "redirect URI to check. Set SERVER_URL (or OAUTH_ALLOWED_ORIGINS) " +
+        "to this server's URL."
+    );
+  }
+
+  const probe = await probeProviderAuthorize({
+    authUrl: config.authUrl,
+    clientId: config.clientId,
+    redirectUri,
+  });
+
+  if (probe.failure) {
+    return respond(
+      PROBE_VERDICTS.UNKNOWN,
+      probe.failure,
+      probe.failure === PROBE_CODES.PROBE_TIMEOUT
+        ? "The provider did not answer within 10 seconds, so no verdict was " +
+          `recorded. Check this URI by hand: ${redirectUri}`
+        : "The provider could not be reached from this server, so no verdict " +
+          `was recorded. Check this URI by hand: ${redirectUri}`
+    );
+  }
+
+  const verdict = classifyProviderProbe(probe);
+
+  // `evidence` names the marker that produced the verdict, so a surprising
+  // result can be traced back to the provider's own words.
+  return res.json({
+    ...base,
+    verdict: verdict.verdict,
+    code: verdict.code,
+    evidence: verdict.evidence,
+    message: diagnosisMessage({
+      provider,
+      verdict: verdict.verdict,
+      redirectUri,
+      code: verdict.code,
+    }),
+  });
+});
+
 /* =====================
    SERVER
 ===================== */
 app.get("/api/stats", adminAuth, async (req, res) => {
   try {
-    const totalQuestions =
-      await Question.countDocuments();
+    const [totalQuestions, totalUsers, results] =
+      await Promise.all([
+        Question.countDocuments(),
+        User.countDocuments(),
+        Result.find()
+          .select(
+            "user userId score totalQuestions topic difficulty " +
+              "correct wrong unanswered responses date"
+          )
+          .lean(),
+      ]);
 
-    const totalResults =
-      await Result.countDocuments();
+    const totalResults = results.length;
 
-    const results =
-      await Result.find();
+    // The three original metrics are unchanged: averageScore
+    // is still the mean of the stored score field.
 
     let averageScore = 0;
 
     if (results.length > 0) {
       const totalScore = results.reduce(
         (sum, result) =>
-          sum + result.score,
+          sum + (isFiniteNumber(result.score) ? result.score : 0),
         0
       );
 
-      averageScore =
-        totalScore / results.length;
+      averageScore = totalScore / results.length;
     }
+
+    const analytics = buildAdminAnalytics(results, {
+      windowDays: 30,
+      missedLimit: 5,
+    });
+
+    // Most-missed questions arrive as ids; resolve the text
+    // here so the client never has to guess at a label.
+
+    const missedIds = analytics.mostMissedQuestions
+      .map((entry) => entry.questionId)
+      .filter((id) => mongoose.isValidObjectId(id));
+
+    const missedQuestions =
+      missedIds.length > 0
+        ? await Question.find({ _id: { $in: missedIds } })
+            .select("question topic difficulty")
+            .lean()
+        : [];
+
+    const missedById = new Map(
+      missedQuestions.map((question) => [
+        String(question._id),
+        question,
+      ])
+    );
 
     res.json({
       totalQuestions,
       totalResults,
-      averageScore:
-        averageScore.toFixed(2),
+      averageScore: averageScore.toFixed(2),
+      // Everything below is new and derived from stored
+      // fields only. Nulls mean "not recorded yet".
+      totalUsers,
+      recordedAccuracy: analytics.recordedAccuracy,
+      accuracySampleSize: analytics.accuracySampleSize,
+      usersWithAttempts: analytics.usersWithAttempts,
+      windowDays: analytics.windowDays,
+      activeUsers: analytics.activeUsers,
+      attemptsOverTime: analytics.attemptsOverTime,
+      scoreDistribution: analytics.scoreDistribution,
+      topicAccuracy: analytics.topicAccuracy,
+      mostMissedQuestions: analytics.mostMissedQuestions.map(
+        (entry) => ({
+          ...entry,
+          question:
+            missedById.get(entry.questionId)?.question || null,
+        })
+      ),
+      generatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    res.status(500).json(error);
+    console.log(error);
+
+    res.status(500).json({
+      message: "Could not load analytics. Please try again.",
+      code: "SERVER_ERROR",
+    });
   }
 });
+
+// CSV export of the per-attempt results the analytics view aggregates.
+// Every column is a stored Result field; a missing value exports as blank.
+
+const RESULT_EXPORT_HEADERS = [
+  "user",
+  "userId",
+  "score",
+  "totalQuestions",
+  "topic",
+  "difficulty",
+  "mode",
+  "correct",
+  "wrong",
+  "unanswered",
+  "negativeMarking",
+  "durationSeconds",
+  "date",
+];
+
+app.get("/api/admin/results/export", adminAuth, async (req, res) => {
+  try {
+    const results = await Result.find()
+      .sort({ date: -1, _id: -1 })
+      .limit(20000)
+      .lean();
+
+    const rows = [
+      RESULT_EXPORT_HEADERS,
+      ...results.map((result) => [
+        result.user,
+        result.userId,
+        result.score,
+        result.totalQuestions,
+        result.topic,
+        result.difficulty,
+        result.mode,
+        result.correct,
+        result.wrong,
+        result.unanswered,
+        result.negativeMarking,
+        result.durationSeconds,
+        result.date ? new Date(result.date).toISOString() : "",
+      ]),
+    ];
+
+    const csv = toCsv(
+      rows.map((row) =>
+        row.map((cell) => (cell === null || cell === undefined ? "" : cell))
+      )
+    );
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      'attachment; filename="brainrace-results.csv"'
+    );
+
+    res.send(csv);
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Could not export results.",
+      code: "SERVER_ERROR",
+    });
+  }
+});
+
+// Admin audit log, newest first, paginated and filtered.
+
+app.get("/api/admin/audit-log", adminAuth, async (req, res) => {
+  try {
+    const { page, pageSize } = parsePagination(req.query, 25);
+
+    const filter = {};
+
+    const action = String(req.query.action || "").trim();
+
+    if (action && action !== "all") {
+      filter.action = action;
+    }
+
+    const actor = String(req.query.actor || "").trim();
+
+    if (actor && actor !== "all") {
+      filter.actor = actor;
+    }
+
+    const search = String(req.query.search || "").trim();
+
+    if (search) {
+      const pattern = new RegExp(escapeRegExp(search), "i");
+
+      filter.$or = [
+        { summary: pattern },
+        { action: pattern },
+        { targetId: pattern },
+      ];
+    }
+
+    const from = req.query.from ? new Date(req.query.from) : null;
+    const to = req.query.to ? new Date(req.query.to) : null;
+
+    if (from && !Number.isNaN(from.getTime())) {
+      filter.createdAt = {
+        ...(filter.createdAt || {}),
+        $gte: from,
+      };
+    }
+
+    if (to && !Number.isNaN(to.getTime())) {
+      // Make the upper bound inclusive of the whole day.
+      const end = new Date(to);
+
+      end.setHours(23, 59, 59, 999);
+
+      filter.createdAt = {
+        ...(filter.createdAt || {}),
+        $lte: end,
+      };
+    }
+
+    const total = await AuditLog.countDocuments(filter);
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const currentPage = Math.min(page, totalPages);
+
+    const [items, actions] = await Promise.all([
+      AuditLog.find(filter)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((currentPage - 1) * pageSize)
+        .limit(pageSize)
+        .lean(),
+      AuditLog.distinct("action"),
+    ]);
+
+    res.json({
+      items,
+      total,
+      page: currentPage,
+      pageSize,
+      totalPages,
+      facets: {
+        actions: actions.filter(Boolean).sort(),
+      },
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).json({
+      message: "Could not load the audit log. Please try again.",
+      code: "SERVER_ERROR",
+    });
+  }
+});
+
 app.delete(
   "/api/results/:id",
   adminAuth,

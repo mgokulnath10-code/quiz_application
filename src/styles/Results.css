@@ -1,1 +1,8 @@
 /* Results page now uses Theme.css primitives (page, stat-grid, table-wrap, empty-state) */
+
+/* Inline status line above the table */
+
+.results-notice {
+  display: block;
+  margin-bottom: 16px;
+}

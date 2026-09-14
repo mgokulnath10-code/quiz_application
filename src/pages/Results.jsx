@@ -1,33 +1,65 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { FiTrash2, FiBarChart2 } from "react-icons/fi";
+import {
+  FiTrash2,
+  FiBarChart2,
+  FiAlertTriangle,
+  FiRefreshCw,
+} from "react-icons/fi";
 import {
   getAdminAuth,
   handleAdminError,
 } from "../utils/adminAuth";
+import useSlowFlag from "../utils/useSlowFlag";
 import "../styles/Results.css";
 
-const API = "https://brain-race.onrender.com";
+import API from "../config/api";
+
+const DASH = "—";
 
 function Results() {
   const [results, setResults] = useState([]);
+  const [state, setState] = useState("loading");
+  const [errorMessage, setErrorMessage] = useState("");
+  const [notice, setNotice] = useState("");
+  const slowLoad = useSlowFlag(state === "loading");
+
   const navigate = useNavigate();
 
   const isAdmin = localStorage.getItem("isAdmin") === "true";
 
+  const token = localStorage.getItem("token") || "";
+
   const fetchResults = async () => {
+    setState("loading");
+    setErrorMessage("");
+
     try {
-      const res = await axios.get(`${API}/api/results`);
+      // Authenticated now, and returns leaderboard fields only —
+      // the per-account detail stays behind /api/results/me.
+      const res = await axios.get(`${API}/api/results`, {
+        headers: { Authorization: token },
+      });
 
       setResults(res.data);
+      setState("ready");
     } catch (error) {
       console.error(error);
+
+      setErrorMessage(
+        error.response?.data?.message ||
+          "The results list could not be loaded."
+      );
+
+      setState("error");
     }
   };
 
   useEffect(() => {
     fetchResults();
+    // Loaded once on mount; the retry button re-runs it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const deleteResult = async (id) => {
@@ -37,17 +69,25 @@ function Results() {
 
     if (!confirmDelete) return;
 
+    setNotice("");
+
     try {
       await axios.delete(
         `${API}/api/results/${id}`,
         getAdminAuth()
       );
 
+      setNotice("Result deleted.");
+
       fetchResults();
     } catch (error) {
       if (!handleAdminError(error, navigate)) {
         console.error(error);
-        alert("Failed to delete result.");
+
+        setNotice(
+          error.response?.data?.message ||
+            "Failed to delete the result. Nothing was removed."
+        );
       }
     }
   };
@@ -56,13 +96,14 @@ function Results() {
 
   const highestScore =
     results.length > 0
-      ? Math.max(...results.map((r) => r.score))
+      ? Math.max(...results.map((r) => Number(r.score) || 0))
       : 0;
 
   const averageScore =
     results.length > 0
       ? (
-          results.reduce((sum, r) => sum + r.score, 0) / results.length
+          results.reduce((sum, r) => sum + (Number(r.score) || 0), 0) /
+          results.length
         ).toFixed(1)
       : 0;
 
@@ -79,90 +120,175 @@ function Results() {
             </p>
           </div>
 
-          <button
-            className="btn btn-secondary"
-            onClick={() => navigate("/")}
-          >
-            Back to home
-          </button>
-        </div>
+          <div className="row">
+            <button className="btn btn-secondary" onClick={fetchResults}>
+              <FiRefreshCw />
+              Refresh
+            </button>
 
-        <div className="stat-grid">
-          <div className="stat-card">
-            <div className="stat-value">{totalAttempts}</div>
-            <div className="stat-label">Total attempts</div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-value">{highestScore}</div>
-            <div className="stat-label">Highest score</div>
-          </div>
-
-          <div className="stat-card">
-            <div className="stat-value">{averageScore}</div>
-            <div className="stat-label">Average score</div>
+            <button
+              className="btn btn-secondary"
+              onClick={() => navigate("/")}
+            >
+              Back to home
+            </button>
           </div>
         </div>
 
-        {results.length === 0 ? (
-          <div className="card empty-state">
-            <span className="empty-icon">
-              <FiBarChart2 />
+        {notice && (
+          <p className="badge badge-info results-notice" role="status">
+            {notice}
+          </p>
+        )}
+
+        {state === "loading" && (
+          <div className="card">
+            <div className="loading-screen" style={{ minHeight: "24vh" }}>
+              Loading results…
+            </div>
+
+            {slowLoad && (
+              <p className="muted" role="status" style={{ textAlign: "center" }}>
+                This is taking longer than expected. The server may be
+                waking up.
+              </p>
+            )}
+          </div>
+        )}
+
+        {state === "error" && (
+          <div className="card empty-state" role="alert">
+            <span
+              className="empty-icon"
+              style={{
+                background: "var(--danger-soft)",
+                color: "var(--danger)",
+              }}
+            >
+              <FiAlertTriangle />
             </span>
 
-            <p>No results yet. Complete a quiz to see it here.</p>
+            <h3 className="card-title">Could not load the results</h3>
+
+            <p style={{ maxWidth: 520, margin: "0 auto 18px" }}>
+              {errorMessage} Your own attempts are always available on
+              your dashboard.
+            </p>
+
+            <div className="row" style={{ justifyContent: "center" }}>
+              <button className="btn btn-primary" onClick={fetchResults}>
+                <FiRefreshCw />
+                Try again
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                onClick={() => navigate("/dashboard")}
+              >
+                My dashboard
+              </button>
+            </div>
           </div>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Participant</th>
-                  <th>Score</th>
-                  <th>Questions</th>
-                  <th>Date</th>
-                  {isAdmin && <th></th>}
-                </tr>
-              </thead>
+        )}
 
-              <tbody>
-                {results.map((result) => (
-                  <tr key={result._id}>
-                    <td>{result.user}</td>
+        {state === "ready" && (
+          <>
+            <div className="stat-grid">
+              <div className="stat-card">
+                <div className="stat-value">{totalAttempts}</div>
+                <div className="stat-label">Total attempts</div>
+              </div>
 
-                    <td className="num">
-                      <strong>{result.score}</strong>
-                    </td>
+              <div className="stat-card">
+                <div className="stat-value">{highestScore}</div>
+                <div className="stat-label">Highest score</div>
+              </div>
 
-                    <td className="num">{result.totalQuestions}</td>
+              <div className="stat-card">
+                <div className="stat-value">{averageScore}</div>
+                <div className="stat-label">Average score</div>
+              </div>
+            </div>
 
-                    <td>
-                      {new Date(result.date).toLocaleDateString(
-                        undefined,
-                        {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        }
-                      )}
-                    </td>
+            {results.length === 0 ? (
+              <div className="card empty-state">
+                <span className="empty-icon">
+                  <FiBarChart2 />
+                </span>
 
-                    {isAdmin && (
-                      <td style={{ textAlign: "right" }}>
-                        <button
-                          className="btn btn-danger-soft btn-sm"
-                          onClick={() => deleteResult(result._id)}
+                <h3 className="card-title">No results yet</h3>
+
+                <p style={{ marginBottom: 16 }}>
+                  Complete a quiz to see it here.
+                </p>
+
+                <button
+                  className="btn btn-primary"
+                  onClick={() => navigate("/quiz-setup")}
+                >
+                  Start a quiz
+                </button>
+              </div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Participant</th>
+                      <th className="num">Score</th>
+                      <th className="num">Questions</th>
+                      <th>Date</th>
+                      {isAdmin && <th></th>}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {results.map((result) => (
+                      <tr key={result._id}>
+                        <td
+                          className="dash-cell-truncate"
+                          title={result.user || ""}
                         >
-                          <FiTrash2 />
-                          Delete
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                          {result.user || DASH}
+                        </td>
+
+                        <td className="num">
+                          <strong>{result.score}</strong>
+                        </td>
+
+                        <td className="num">
+                          {result.totalQuestions ?? DASH}
+                        </td>
+
+                        <td>
+                          {new Date(result.date).toLocaleDateString(
+                            undefined,
+                            {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                            }
+                          )}
+                        </td>
+
+                        {isAdmin && (
+                          <td style={{ textAlign: "right" }}>
+                            <button
+                              className="btn btn-danger-soft btn-sm"
+                              onClick={() => deleteResult(result._id)}
+                            >
+                              <FiTrash2 />
+                              Delete
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         )}
 
       </div>

@@ -1,31 +1,45 @@
+import { lazy, Suspense } from "react";
 import {
   BrowserRouter,
   Routes,
   Route,
 } from "react-router-dom";
 
-import Home from "./pages/Home";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import Quiz from "./pages/Quiz";
-import Admin from "./pages/Admin";
-import Results from "./pages/Results";
-import Leaderboard from "./pages/Leaderboard";
-import AdminStats from "./pages/AdminStats";
-import Certificate from "./pages/Certificate";
-import Profile from "./pages/Profile";
-import AdminLogin from "./pages/AdminLogin";
-import Rooms from "./pages/Rooms";
-import RoomAdmin from "./pages/RoomAdmin";
-import RoomQuiz from "./pages/RoomQuiz";
-import AdminRooms from "./pages/AdminRooms";
+// Route-level code splitting: each page is its own chunk, so the
+// heavy charting dependency (recharts, imported only by Dashboard
+// and AdminStats) is not in the initial bundle every visitor
+// downloads on the login page.
+const Home = lazy(() => import("./pages/Home"));
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const Quiz = lazy(() => import("./pages/Quiz"));
+const Admin = lazy(() => import("./pages/Admin"));
+const Results = lazy(() => import("./pages/Results"));
+const Leaderboard = lazy(() => import("./pages/Leaderboard"));
+const AdminStats = lazy(() => import("./pages/AdminStats"));
+const Certificate = lazy(() => import("./pages/Certificate"));
+const Profile = lazy(() => import("./pages/Profile"));
+const AdminLogin = lazy(() => import("./pages/AdminLogin"));
+const Rooms = lazy(() => import("./pages/Rooms"));
+const RoomAdmin = lazy(() => import("./pages/RoomAdmin"));
+const RoomQuiz = lazy(() => import("./pages/RoomQuiz"));
+const AdminRooms = lazy(() => import("./pages/AdminRooms"));
 
 import ProtectedRoute from "./components/ProtectedRoute";
 import AdminProtectedRoute from "./components/AdminProtectedRoute";
 
-import ForgotPassword from "./pages/ForgotPassword";
-import QuizSetup from "./pages/QuizSetup";
-import OAuthCallback from "./pages/OAuthCallback";
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const QuizSetup = lazy(() => import("./pages/QuizSetup"));
+const OAuthCallback = lazy(() => import("./pages/OAuthCallback"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers"));
+const AdminAuditLog = lazy(() => import("./pages/AdminAuditLog"));
+
+// Shown while a route chunk is fetched. Reuses the existing
+// loading presentation from styles/Theme.css.
+const RouteFallback = () => (
+  <div className="loading-screen">Loading…</div>
+);
 
 function App() {
 
@@ -33,7 +47,8 @@ function App() {
     <BrowserRouter>
       <div>
 
-        <Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
 
           {/* HOME */}
           <Route
@@ -99,6 +114,15 @@ function App() {
             element={
               <ProtectedRoute>
                 <Leaderboard />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
               </ProtectedRoute>
             }
           />
@@ -182,7 +206,26 @@ function App() {
             }
           />
 
-        </Routes>
+          <Route
+            path="/admin-users"
+            element={
+              <AdminProtectedRoute>
+                <AdminUsers />
+              </AdminProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin-audit"
+            element={
+              <AdminProtectedRoute>
+                <AdminAuditLog />
+              </AdminProtectedRoute>
+            }
+          />
+
+          </Routes>
+        </Suspense>
       </div>
     </BrowserRouter>
   );

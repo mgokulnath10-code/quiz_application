@@ -60,6 +60,75 @@
   height: 14px;
 }
 
+.quiz-timer-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* The rules currently in force, repeated on every question so
+   the candidate never has to remember the setup screen. */
+
+.quiz-rule-line {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-2);
+  margin: -10px 0 14px;
+}
+
+.quiz-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  border-radius: var(--radius);
+  background: var(--warning-soft);
+  color: var(--warning);
+  font-size: 13.5px;
+}
+
+.quiz-notice svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.quiz-lead {
+  font-size: 14.5px;
+  color: var(--text-2);
+  margin: 8px 0 20px;
+}
+
+.quiz-status-note {
+  font-size: 13.5px;
+  color: var(--text-2);
+  margin: 12px 0;
+}
+
+.quiz-save-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.quiz-save-error svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 .progress-container {
   height: 6px;
   border-radius: 999px;

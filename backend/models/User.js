@@ -13,10 +13,18 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    // "local" | "google" | "microsoft"
+    // "local" | "google" | "microsoft" | "github"
     provider: {
       type: String,
       default: "local",
+    },
+    // Admin-controlled lock. A disabled account cannot log in,
+    // and any token issued before the lock stops working
+    // because middleware/auth.js re-reads the account.
+    // Absent on old documents, so it is read as falsy.
+    disabled: {
+      type: Boolean,
+      default: false,
     },
   },
   {

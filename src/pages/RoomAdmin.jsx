@@ -13,7 +13,7 @@ import {
 import RoomChat from "../components/RoomChat";
 import "../styles/Rooms.css";
 
-const API = "https://brain-race.onrender.com";
+import API from "../config/api";
 
 const TIMER_PRESETS = [10, 20, 30, 60];
 const THRESHOLD_OPTIONS = [50, 60, 70, 80, 90];

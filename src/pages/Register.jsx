@@ -4,7 +4,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { FiZap, FiMail } from "react-icons/fi";
 import "../styles/Auth.css";
 
-const API = "https://brain-race.onrender.com";
+import API from "../config/api";
 
 function Register() {
   const navigate = useNavigate();

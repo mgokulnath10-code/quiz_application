@@ -127,3 +127,129 @@
 .auth-social svg {
   flex-shrink: 0;
 }
+
+/* ============ ADDENDUM: admin server diagnostics ============ */
+
+.login-diagnostics {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  text-align: left;
+}
+
+.login-diagnostics summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.login-diagnostics[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.diagnostics-body {
+  padding: 12px 14px;
+}
+
+.diagnostics-list {
+  list-style: none;
+  margin: 8px 0 4px;
+  font-size: 13px;
+  color: var(--text-2);
+  display: grid;
+  gap: 2px;
+}
+
+.diagnostics-help {
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin: 10px 0 12px;
+}
+
+.diagnostics-provider {
+  margin-bottom: 12px;
+}
+
+.diagnostics-provider-name {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+
+.uri-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.uri-value {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.diagnostics-warning {
+  display: inline-flex;
+  white-space: normal;
+  margin-top: 4px;
+}
+
+/* ============ ADDENDUM: provider redirect-URI check ============ */
+
+.diagnostics-check {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.diagnostics-results {
+  margin-top: 10px;
+  display: grid;
+  gap: 10px;
+}
+
+.diagnostics-result {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: 10px;
+}
+
+.diagnostics-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.diagnostics-result-head .diagnostics-provider-name {
+  margin-bottom: 0;
+}
+
+.diagnostics-result-message {
+  font-size: 12.5px;
+  color: var(--text-2);
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.diagnostics-result-reason {
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+

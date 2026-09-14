@@ -15,7 +15,7 @@ import RoomChat from "../components/RoomChat";
 import "../styles/Rooms.css";
 import "../styles/Quiz.css";
 
-const API = "https://brain-race.onrender.com";
+import API from "../config/api";
 
 const getAuth = () => ({
   headers: {

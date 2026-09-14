@@ -1,0 +1,163 @@
+/* Dashboard — built from Theme.css primitives only */
+
+.dash-onboarding {
+  text-align: center;
+  padding: 48px 24px;
+}
+
+.dash-onboarding .empty-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+}
+
+.dash-onboarding .empty-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.dash-onboarding-title {
+  font-size: 20px;
+  margin-bottom: 8px;
+}
+
+.dash-onboarding-lead {
+  font-size: 14.5px;
+  color: var(--text-2);
+  max-width: 540px;
+  margin: 0 auto 22px;
+}
+
+.dash-note {
+  margin: -14px 0 24px;
+}
+
+.dash-grid {
+  margin-bottom: 0;
+}
+
+/* Chart placeholder when there is not enough data to plot */
+
+.dash-chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 180px;
+  padding: 24px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-2);
+  text-align: center;
+}
+
+.dash-chart-empty svg {
+  width: 22px;
+  height: 22px;
+  color: var(--text-3);
+}
+
+.dash-chart-empty p {
+  font-size: 13.5px;
+  max-width: 340px;
+}
+
+/* Recommendations */
+
+.dash-recs {
+  margin-top: 20px;
+}
+
+.dash-rec-list {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+}
+
+.dash-rec-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.dash-rec-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.dash-rec-topic {
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: var(--text);
+}
+
+.dash-rec-evidence {
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.dash-rec-action {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.dash-rec-empty {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+
+.dash-rec-empty svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--warning);
+}
+
+.dash-rec-empty p {
+  flex: 1;
+  min-width: 240px;
+}
+
+/* Edge case: a very long topic name must not blow out the row */
+
+.dash-cell-truncate {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-footer-actions {
+  margin-top: 24px;
+}
+
+@media (max-width: 640px) {
+  .dash-rec-list li {
+    align-items: stretch;
+  }
+}
