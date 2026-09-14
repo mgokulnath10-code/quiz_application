@@ -17,6 +17,10 @@ services:
     startCommand: node backend/server.js
     healthCheckPath: /api/health
     envVars:
+      # Pin the runtime: Vite 8 needs Node >= 20.19 (or >= 22.12), and an
+      # unpinned Render image can drift onto an unsupported version.
+      - key: NODE_VERSION
+        value: "22"
       - key: NODE_ENV
         value: production
       # Same origin for the API and the SPA, so both OAuth origins are the
