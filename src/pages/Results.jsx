@@ -12,6 +12,7 @@ import {
   getAdminAuth,
   handleAdminError,
 } from "../utils/adminAuth";
+import { getResultsAuth } from "../utils/resultsAuth";
 import useSlowFlag from "../utils/useSlowFlag";
 import "../styles/Results.css";
 
@@ -30,18 +31,16 @@ function Results() {
 
   const isAdmin = localStorage.getItem("isAdmin") === "true";
 
-  const token = localStorage.getItem("token") || "";
-
   const fetchResults = async () => {
     setState("loading");
     setErrorMessage("");
 
     try {
       // Authenticated now, and returns leaderboard fields only —
-      // the per-account detail stays behind /api/results/me.
-      const res = await axios.get(`${API}/api/results`, {
-        headers: { Authorization: token },
-      });
+      // the per-account detail stays behind /api/results/me. The
+      // header carries either the signed-in user's raw token or the
+      // admin token, so both identities read the same list.
+      const res = await axios.get(`${API}/api/results`, getResultsAuth());
 
       setResults(res.data);
       setState("ready");
@@ -72,7 +71,6 @@ function Results() {
   useEffect(() => {
     fetchResults();
     // Loaded once on mount; the retry button re-runs it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const deleteResult = async (id) => {

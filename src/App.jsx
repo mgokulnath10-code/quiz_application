@@ -98,7 +98,7 @@ function App() {
           <Route
             path="/results"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowAdmin>
                 <Results />
               </ProtectedRoute>
             }
@@ -107,7 +107,7 @@ function App() {
           <Route
             path="/leaderboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowAdmin>
                 <Leaderboard />
               </ProtectedRoute>
             }

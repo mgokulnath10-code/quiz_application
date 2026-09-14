@@ -5,8 +5,10 @@ import {
   FiTrendingUp,
   FiAlertTriangle,
   FiRefreshCw,
+  FiLogIn,
 } from "react-icons/fi";
 import useSlowFlag from "../utils/useSlowFlag";
+import { getResultsAuth } from "../utils/resultsAuth";
 import "../styles/Leaderboard.css";
 
 import API from "../config/api";
@@ -21,18 +23,16 @@ function Leaderboard() {
 
   const navigate = useNavigate();
 
-  const token = localStorage.getItem("token") || "";
-
   const fetchResults = async () => {
     setState("loading");
     setErrorMessage("");
 
     try {
       // The results endpoint now requires a signed-in caller and
-      // returns leaderboard fields only.
-      const res = await axios.get(`${API}/api/results`, {
-        headers: { Authorization: token },
-      });
+      // returns leaderboard fields only. The header carries either
+      // the signed-in user's raw token or the admin token, so both
+      // identities read the same rankings.
+      const res = await axios.get(`${API}/api/results`, getResultsAuth());
 
       const sorted = [...res.data].sort((a, b) => b.score - a.score);
 
@@ -40,6 +40,16 @@ function Leaderboard() {
       setState("ready");
     } catch (error) {
       console.error(error);
+
+      const status = error.response?.status;
+      const code = error.response?.data?.code;
+
+      // A rejected or missing session is a signed-out state, not a
+      // broken page — give it its own explanation and a way back in.
+      if (status === 401 || code === "AUTH_REQUIRED") {
+        setState("signed-out");
+        return;
+      }
 
       setErrorMessage(
         error.response?.data?.message ||
@@ -53,7 +63,6 @@ function Leaderboard() {
   useEffect(() => {
     fetchResults();
     // Loaded once on mount; the retry button re-runs it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -96,6 +105,47 @@ function Leaderboard() {
                 waking up.
               </p>
             )}
+          </div>
+        )}
+
+        {state === "signed-out" && (
+          <div className="card empty-state">
+            <span
+              className="empty-icon"
+              style={{
+                background: "var(--accent-soft)",
+                color: "var(--accent)",
+              }}
+            >
+              <FiLogIn />
+            </span>
+
+            <h3 className="card-title">Log in to view the leaderboard</h3>
+
+            <p
+              role="alert"
+              style={{ maxWidth: 520, margin: "0 auto 18px" }}
+            >
+              You are signed out, or your session has expired. The
+              leaderboard is only available to signed-in accounts.
+            </p>
+
+            <div className="row" style={{ justifyContent: "center" }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => navigate("/login")}
+              >
+                <FiLogIn />
+                Log in
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                onClick={() => navigate("/")}
+              >
+                Back to home
+              </button>
+            </div>
           </div>
         )}
 
