@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { FiZap } from "react-icons/fi";
+import {
+  messageForAuthError,
+  messageForLoginError,
+} from "../utils/apiError";
 import "../styles/Auth.css";
 
 import API from "../config/api";
@@ -58,10 +62,19 @@ const UNAVAILABLE_STYLE = {
 
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Failures are reported inline, never in a blocking dialog.
+  const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  // A message carried here by the register / reset flow (e.g. after the
+  // email was verified) is shown once, above the form.
+  const [notice, setNotice] = useState(location.state?.notice || "");
 
   const [social, setSocial] = useState({
     google: false,
@@ -85,13 +98,30 @@ function Login() {
       .catch(() => setProvidersError(true));
   }, []);
 
+  const clearFieldError = (field) =>
+    setFieldErrors((prev) =>
+      prev[field] ? { ...prev, [field]: "" } : prev
+    );
+
   const handleLogin = async () => {
-    if (!email || !password) {
-      alert("Please enter your email and password.");
+    const nextFieldErrors = {};
+
+    if (!email.trim()) nextFieldErrors.email = "Enter your email address.";
+
+    if (!password) nextFieldErrors.password = "Enter your password.";
+
+    setFieldErrors(nextFieldErrors);
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setError("");
+      setNotice("");
+
       return;
     }
 
     setLoading(true);
+    setError("");
+    setNotice("");
 
     try {
       const res = await axios.post(`${API}/api/login`, {
@@ -105,32 +135,41 @@ function Login() {
       localStorage.setItem("isAdmin", "false");
 
       navigate("/");
-    } catch (error) {
-      const data = error.response?.data;
-
-      if (data?.code === "ACCOUNT_DISABLED") {
-        alert(
-          data.message ||
-            "This account has been disabled by an administrator."
-        );
-
-        return;
-      }
+    } catch (err) {
+      const data = err.response?.data;
 
       if (data?.requiresVerification) {
-        alert(data.message);
-
+        // Unverified accounts keep going to the same place as before; the
+        // server's explanation now travels with the navigation and is shown
+        // on the register page instead of interrupting with a dialog.
         navigate("/register", {
           state: {
             verifyEmail: true,
             email,
+            notice: data.message,
           },
         });
 
         return;
       }
 
-      alert(data?.message || "Invalid email or password.");
+      if (data?.code === "ACCOUNT_DISABLED") {
+        setError(
+          messageForAuthError(
+            err,
+            "This account has been disabled by an administrator."
+          )
+        );
+
+        return;
+      }
+
+      setError(
+        messageForLoginError(
+          err,
+          "We could not sign you in. Please try again."
+        )
+      );
     } finally {
       setLoading(false);
     }
@@ -159,6 +198,18 @@ function Login() {
           Log in to continue to your account.
         </p>
 
+        {notice && (
+          <p className="auth-banner auth-banner-success" role="status">
+            {notice}
+          </p>
+        )}
+
+        {error && (
+          <p className="auth-banner auth-banner-danger" role="alert">
+            {error}
+          </p>
+        )}
+
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -174,9 +225,26 @@ function Login() {
               type="email"
               placeholder="you@example.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearFieldError("email");
+              }}
+              aria-invalid={fieldErrors.email ? true : undefined}
+              aria-describedby={
+                fieldErrors.email ? "login-email-error" : undefined
+              }
               autoFocus
             />
+
+            {fieldErrors.email && (
+              <p
+                className="auth-field-error"
+                id="login-email-error"
+                role="alert"
+              >
+                {fieldErrors.email}
+              </p>
+            )}
           </div>
 
           <div className="field">
@@ -188,8 +256,25 @@ function Login() {
               type="password"
               placeholder="Enter your password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                clearFieldError("password");
+              }}
+              aria-invalid={fieldErrors.password ? true : undefined}
+              aria-describedby={
+                fieldErrors.password ? "login-password-error" : undefined
+              }
             />
+
+            {fieldErrors.password && (
+              <p
+                className="auth-field-error"
+                id="login-password-error"
+                role="alert"
+              >
+                {fieldErrors.password}
+              </p>
+            )}
           </div>
 
           <button

@@ -128,6 +128,53 @@
   flex-shrink: 0;
 }
 
+/* ============ ADDENDUM: inline form feedback ============ */
+
+/* Request failures are reported here rather than in a blocking browser
+   dialog: the message stays beside the form, is announced by the alert role,
+   and can be re-read after the user looks away. */
+
+.auth-banner {
+  display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  margin-bottom: 14px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.auth-banner-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.auth-banner-success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.auth-banner-info {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* A validation message belongs to its field, so it sits under the input and
+   the input itself is marked invalid. */
+
+.auth-field-error {
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
 /* ============ ADDENDUM: admin server diagnostics ============ */
 
 .login-diagnostics {

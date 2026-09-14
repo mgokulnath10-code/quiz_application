@@ -2,6 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import { FiZap, FiArrowLeft } from "react-icons/fi";
+import { messageForAuthError } from "../utils/apiError";
 import "../styles/Auth.css";
 
 import API from "../config/api";
@@ -19,17 +20,26 @@ function ForgotPassword() {
   const [loading, setLoading] = useState(false);
   const [devCode, setDevCode] = useState("");
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+
+  const clearFieldError = (field) =>
+    setFieldErrors((prev) =>
+      prev[field] ? { ...prev, [field]: "" } : prev
+    );
 
   // Step 1 — request the reset code. The server
   // answers the same whether or not the email
   // exists, so we simply continue to the OTP step.
 
   const requestCode = async () => {
-    if (!email) {
-      alert("Enter your email.");
+    if (!email.trim()) {
+      setFieldErrors({ email: "Enter your email address." });
+      setError("");
+
       return;
     }
 
+    setFieldErrors({});
     setLoading(true);
     setError("");
 
@@ -51,8 +61,10 @@ function ForgotPassword() {
       // for a code that can never arrive.
 
       setError(
-        err.response?.data?.message ||
+        messageForAuthError(
+          err,
           "Could not send the code. Please try again."
+        )
       );
     } finally {
       setLoading(false);
@@ -63,10 +75,13 @@ function ForgotPassword() {
 
   const verifyCode = async () => {
     if (otp.length !== 6) {
-      alert("Enter the 6-digit code.");
+      setFieldErrors({ otp: "Enter the 6-digit code from your email." });
+      setError("");
+
       return;
     }
 
+    setFieldErrors({});
     setLoading(true);
     setError("");
 
@@ -80,8 +95,7 @@ function ForgotPassword() {
       setStep(3);
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Incorrect or expired code."
+        messageForAuthError(err, "Incorrect or expired code.")
       );
     } finally {
       setLoading(false);
@@ -92,15 +106,22 @@ function ForgotPassword() {
 
   const resetPassword = async () => {
     if (newPassword.length < 6) {
-      alert("Password must be at least 6 characters.");
+      setFieldErrors({
+        newPassword: "Password must be at least 6 characters.",
+      });
+      setError("");
+
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      alert("Passwords do not match.");
+      setFieldErrors({ confirmPassword: "Passwords do not match." });
+      setError("");
+
       return;
     }
 
+    setFieldErrors({});
     setLoading(true);
     setError("");
 
@@ -111,13 +132,14 @@ function ForgotPassword() {
         newPassword,
       });
 
-      alert("Password updated. Please log in.");
-
-      navigate("/login");
+      // The confirmation rides along with the navigation instead of
+      // interrupting the user with a dialog.
+      navigate("/login", {
+        state: { notice: "Password updated. Please log in." },
+      });
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Could not reset the password."
+        messageForAuthError(err, "Could not reset the password.")
       );
     } finally {
       setLoading(false);
@@ -150,15 +172,7 @@ function ForgotPassword() {
         </p>
 
         {error && (
-          <p
-            className="badge badge-danger"
-            style={{
-              display: "block",
-              whiteSpace: "normal",
-              marginBottom: 14,
-              padding: "6px 12px",
-            }}
-          >
+          <p className="auth-banner auth-banner-danger" role="alert">
             {error}
           </p>
         )}
@@ -189,9 +203,26 @@ function ForgotPassword() {
                 type="email"
                 placeholder="you@example.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  clearFieldError("email");
+                }}
+                aria-invalid={fieldErrors.email ? true : undefined}
+                aria-describedby={
+                  fieldErrors.email ? "fp-email-error" : undefined
+                }
                 autoFocus
               />
+
+              {fieldErrors.email && (
+                <p
+                  className="auth-field-error"
+                  id="fp-email-error"
+                  role="alert"
+                >
+                  {fieldErrors.email}
+                </p>
+              )}
             </div>
 
             <button
@@ -227,11 +258,26 @@ function ForgotPassword() {
                   fontSize: 18,
                 }}
                 value={otp}
-                onChange={(e) =>
-                  setOtp(e.target.value.replace(/\D/g, ""))
+                onChange={(e) => {
+                  setOtp(e.target.value.replace(/\D/g, ""));
+                  clearFieldError("otp");
+                }}
+                aria-invalid={fieldErrors.otp ? true : undefined}
+                aria-describedby={
+                  fieldErrors.otp ? "fp-otp-error" : undefined
                 }
                 autoFocus
               />
+
+              {fieldErrors.otp && (
+                <p
+                  className="auth-field-error"
+                  id="fp-otp-error"
+                  role="alert"
+                >
+                  {fieldErrors.otp}
+                </p>
+              )}
             </div>
 
             <button
@@ -260,9 +306,26 @@ function ForgotPassword() {
                 type="password"
                 placeholder="At least 6 characters"
                 value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  clearFieldError("newPassword");
+                }}
+                aria-invalid={fieldErrors.newPassword ? true : undefined}
+                aria-describedby={
+                  fieldErrors.newPassword ? "fp-new-error" : undefined
+                }
                 autoFocus
               />
+
+              {fieldErrors.newPassword && (
+                <p
+                  className="auth-field-error"
+                  id="fp-new-error"
+                  role="alert"
+                >
+                  {fieldErrors.newPassword}
+                </p>
+              )}
             </div>
 
             <div className="field">
@@ -274,8 +337,27 @@ function ForgotPassword() {
                 type="password"
                 placeholder="Repeat the password"
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  clearFieldError("confirmPassword");
+                }}
+                aria-invalid={fieldErrors.confirmPassword ? true : undefined}
+                aria-describedby={
+                  fieldErrors.confirmPassword
+                    ? "fp-confirm-error"
+                    : undefined
+                }
               />
+
+              {fieldErrors.confirmPassword && (
+                <p
+                  className="auth-field-error"
+                  id="fp-confirm-error"
+                  role="alert"
+                >
+                  {fieldErrors.confirmPassword}
+                </p>
+              )}
             </div>
 
             <button

@@ -2,7 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { FiZap, FiMail } from "react-icons/fi";
-import { messageForError } from "../utils/apiError";
+import { messageForAuthError } from "../utils/apiError";
 import "../styles/Auth.css";
 
 import API from "../config/api";
@@ -26,20 +26,38 @@ function Register() {
 
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState(
-    location.state?.verifyEmail
-      ? "Your email isn't verified yet. Enter the code we just sent you."
-      : ""
+    location.state?.notice ||
+      (location.state?.verifyEmail
+        ? "Your email isn't verified yet. Enter the code we just sent you."
+        : "")
   );
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   // Only ever populated when the server explicitly enables
   // dev OTP (ALLOW_DEV_OTP=true and not production).
 
   const [devCode, setDevCode] = useState("");
 
+  const clearFieldError = (field) =>
+    setFieldErrors((prev) =>
+      prev[field] ? { ...prev, [field]: "" } : prev
+    );
+
   const handleRegister = async () => {
-    if (!name || !email || !password) {
-      alert("Please fill in all fields.");
+    const nextFieldErrors = {};
+
+    if (!name.trim()) nextFieldErrors.name = "Enter your full name.";
+
+    if (!email.trim()) nextFieldErrors.email = "Enter your email address.";
+
+    if (!password) nextFieldErrors.password = "Choose a password.";
+
+    setFieldErrors(nextFieldErrors);
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setError("");
+
       return;
     }
 
@@ -63,7 +81,7 @@ function Register() {
       }
     } catch (err) {
       setError(
-        messageForError(err, "Registration failed. Please try again.")
+        messageForAuthError(err, "Registration failed. Please try again.")
       );
     } finally {
       setLoading(false);
@@ -72,10 +90,15 @@ function Register() {
 
   const handleVerify = async () => {
     if (!otp || otp.length !== 6) {
-      alert("Enter the 6-digit code from your email.");
+      setFieldErrors({
+        otp: "Enter the 6-digit code from your email.",
+      });
+      setError("");
+
       return;
     }
 
+    setFieldErrors({});
     setLoading(true);
     setError("");
 
@@ -86,12 +109,14 @@ function Register() {
         purpose: "register",
       });
 
-      alert("Email verified. Please log in.");
-
-      navigate("/login");
+      // The confirmation rides along with the navigation instead of
+      // interrupting the user with a dialog.
+      navigate("/login", {
+        state: { notice: "Email verified. Please log in." },
+      });
     } catch (err) {
       setError(
-        messageForError(err, "Verification failed. Please try again.")
+        messageForAuthError(err, "Verification failed. Please try again.")
       );
     } finally {
       setLoading(false);
@@ -124,15 +149,7 @@ function Register() {
             </p>
 
             {error && (
-              <p
-                className="badge badge-danger"
-                style={{
-                  display: "block",
-                  whiteSpace: "normal",
-                  marginBottom: 14,
-                  padding: "6px 12px",
-                }}
-              >
+              <p className="auth-banner auth-banner-danger" role="alert">
                 {error}
               </p>
             )}
@@ -152,9 +169,26 @@ function Register() {
                   type="text"
                   placeholder="Your name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    clearFieldError("name");
+                  }}
+                  aria-invalid={fieldErrors.name ? true : undefined}
+                  aria-describedby={
+                    fieldErrors.name ? "reg-name-error" : undefined
+                  }
                   autoFocus
                 />
+
+                {fieldErrors.name && (
+                  <p
+                    className="auth-field-error"
+                    id="reg-name-error"
+                    role="alert"
+                  >
+                    {fieldErrors.name}
+                  </p>
+                )}
               </div>
 
               <div className="field">
@@ -166,8 +200,25 @@ function Register() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    clearFieldError("email");
+                  }}
+                  aria-invalid={fieldErrors.email ? true : undefined}
+                  aria-describedby={
+                    fieldErrors.email ? "reg-email-error" : undefined
+                  }
                 />
+
+                {fieldErrors.email && (
+                  <p
+                    className="auth-field-error"
+                    id="reg-email-error"
+                    role="alert"
+                  >
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
 
               <div className="field">
@@ -179,8 +230,25 @@ function Register() {
                   type="password"
                   placeholder="Choose a password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearFieldError("password");
+                  }}
+                  aria-invalid={fieldErrors.password ? true : undefined}
+                  aria-describedby={
+                    fieldErrors.password ? "reg-password-error" : undefined
+                  }
                 />
+
+                {fieldErrors.password && (
+                  <p
+                    className="auth-field-error"
+                    id="reg-password-error"
+                    role="alert"
+                  >
+                    {fieldErrors.password}
+                  </p>
+                )}
               </div>
 
               <button
@@ -211,10 +279,7 @@ function Register() {
             </p>
 
             {notice && (
-              <p
-                className="badge badge-accent"
-                style={{ marginBottom: 14, padding: "6px 12px" }}
-              >
+              <p className="auth-banner auth-banner-info" role="status">
                 {notice}
               </p>
             )}
@@ -230,15 +295,7 @@ function Register() {
             )}
 
             {error && (
-              <p
-                className="badge badge-danger"
-                style={{
-                  display: "block",
-                  whiteSpace: "normal",
-                  marginBottom: 14,
-                  padding: "6px 12px",
-                }}
-              >
+              <p className="auth-banner auth-banner-danger" role="alert">
                 {error}
               </p>
             )}
@@ -265,11 +322,26 @@ function Register() {
                     fontSize: 18,
                   }}
                   value={otp}
-                  onChange={(e) =>
-                    setOtp(e.target.value.replace(/\D/g, ""))
+                  onChange={(e) => {
+                    setOtp(e.target.value.replace(/\D/g, ""));
+                    clearFieldError("otp");
+                  }}
+                  aria-invalid={fieldErrors.otp ? true : undefined}
+                  aria-describedby={
+                    fieldErrors.otp ? "reg-otp-error" : undefined
                   }
                   autoFocus
                 />
+
+                {fieldErrors.otp && (
+                  <p
+                    className="auth-field-error"
+                    id="reg-otp-error"
+                    role="alert"
+                  >
+                    {fieldErrors.otp}
+                  </p>
+                )}
               </div>
 
               <button
@@ -288,6 +360,8 @@ function Register() {
                   setMode("register");
 
                   setOtp("");
+
+                  setFieldErrors({});
                 }}
               >
                 <FiMail />
