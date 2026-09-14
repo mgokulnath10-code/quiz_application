@@ -4,42 +4,43 @@ Operational notes for deploying BrainRace. This file records **names and
 purpose only**. It is committed, so it must never contain a secret, token,
 credential, or environment value.
 
-BrainRace is three pieces:
+BrainRace deploys as **one Render web service** that serves two things:
 
-- **Frontend (SPA)** — the Vite/React app in `src/`, built to `dist/`, deployed
-  as a static site (Vercel).
-- **Backend (API)** — the Express app in `backend/`, deployed separately
-  (Render).
-- **Database** — MongoDB, reached only by the backend through `MONGO_URI`.
+- **Backend (API)** - the Express app in `backend/`, which owns every
+  `/api/...` route.
+- **Frontend (SPA)** - the Vite/React app in `src/`, built to `dist/` by the
+  same build and served by that Express app from the same origin, with an SPA
+  fallback for deep links (section 1).
+- **Database** - MongoDB, reached only by the backend through `MONGO_URI`.
 
-The frontend is a pure static SPA with no server of its own; it calls the
-backend at `${VITE_API_BASE_URL}/api/...` (the backend origin). That split is
-why the frontend needs the SPA fallback below.
+The frontend ships with a relative API base: requests become `/api/...`
+against the origin that served the page, so there is no second host and no
+cross-origin setup to maintain. `render.yaml` at the repository root declares
+the single service (Render -> New -> Blueprint); `backend/server.js` mounts the
+static SPA and its fallback at the bottom of the file. The separate static
+hosting of the frontend (Vercel) that an earlier revision of this document
+described has been retired.
 
 ## 1. SPA fallback (required for every deep link)
 
 The app serves one HTML shell (`/index.html`) and routes in the browser:
 `/login`, `/register`, `/forgot-password`, `/rooms`, `/quiz`, `/dashboard`,
 `/leaderboard`, `/admin-login`, `/admin`, `/oauth/callback`, and the other
-routes declared in `src/App.jsx`. A static host that only matches files
-returns 404 for those paths unless it is told to fall back to the shell.
+routes declared in `src/App.jsx`. A host that only matches files returns 404
+for those paths unless it is told to fall back to the shell.
 
-- **Vercel** — `vercel.json` at the repository root rewrites every unmatched
-  path to `/index.html`. Vercel checks the filesystem before applying
-  `rewrites`, so real files (`/assets/...`, `/favicon.svg`, `/icons.svg`) are
-  still served as files and only unmatched paths reach the shell.
-- **Netlify** — `public/_redirects` contains `/*    /index.html   200`, the
-  Netlify equivalent. Vite copies `public/` into `dist/`, so the rule ships
-  with the build. Leave it in place for any Netlify deployment.
-
-Without the fallback, refreshing or bookmarking any page 404s, and social
-sign-in can never complete because the provider return lands on
-`/oauth/callback`.
+The Express app owns this fallback now. For any non-`/api` GET or HEAD that is
+not a real file in `dist/`, `backend/server.js` returns `dist/index.html`; a
+missing hashed asset under `/assets/...` answers 404 JSON instead of the shell
+so a stale bundle fails clearly. Deep links, refreshes and the OAuth return
+path therefore all resolve on the single Render origin with no host-specific
+configuration. The former `vercel.json` rewrite and `public/_redirects` rule
+were removed together with the separate static hosting they served.
 
 ## 2. Backend environment variables
 
 The backend reads these from the process environment. They must be set in the
-**host's dashboard** (for the Render service: Environment → Environment
+**host's dashboard** (on the Render service: Environment → Environment
 Variables), never committed to the repository.
 
 | Variable | Purpose | What breaks without it |
@@ -149,19 +150,20 @@ Notes:
 After the provider callback, the backend redirects the browser to:
 
 ```
-<FRONTEND_URL>/oauth/callback?token=...&id=...&name=...&email=...
+<FRONTEND_URL>/oauth/callback?token=***&id=...&name=...&email=...
 ```
 
-- `FRONTEND_URL` must therefore be the **deployed frontend origin** (the Vercel
-  origin), not the backend origin, and that origin must be reachable.
+- With the single-service deployment, `FRONTEND_URL` and `SERVER_URL` are the
+  same Render origin (see `render.yaml`), so the browser lands back on the site
+  that started the sign-in.
 - `/oauth/callback` is a client-side route with no file behind it, so it only
-  resolves because of the SPA rewrite in `vercel.json` (or
-  `public/_redirects` on Netlify). Without that rewrite the return 404s and
-  social sign-in can never complete.
+  resolves because of the SPA fallback in `backend/server.js` (section 1).
+  Without it the return 404s and social sign-in can never complete.
 
 ## 5. Secrets
 
 Keep every value out of this file and out of the repository. Set them in the
-host dashboards: the backend variables on the API host, and the public
-frontend `VITE_API_BASE_URL` in the frontend build's environment. `VITE_*`
+host dashboard: every backend variable on the single Render service. The
+frontend needs no deployed value at all - with `VITE_API_BASE_URL` unset its
+API base is relative, so production builds point at their own origin. `VITE_*`
 values are inlined into the browser bundle, so they are public by definition.

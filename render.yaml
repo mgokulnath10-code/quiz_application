@@ -1,0 +1,75 @@
+# Render Blueprint for BrainRace.
+#
+# ONE web service serves both halves of the app from a single origin: the
+# Express API under /api/* and the built Vite SPA (dist/) for every other
+# path, including deep links like /login (see backend/server.js). Deploy with
+# this file (Render -> New -> Blueprint) or configure the same commands by
+# hand in the dashboard. Operational details live in DEPLOYMENT.md.
+#
+# Secret values are never stored here: every variable marked `sync: false` is
+# prompted for in the Render dashboard and kept out of the repository.
+
+services:
+  - type: web
+    name: brain-race
+    runtime: node
+    buildCommand: npm ci --include=dev && npm run build && cd backend && npm ci
+    startCommand: node backend/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Same origin for the API and the SPA, so both OAuth origins are the
+      # service's own URL. Keep this host in sync with the provider consoles
+      # (DEPLOYMENT.md section 3).
+      - key: SERVER_URL
+        value: https://brain-race.onrender.com
+      - key: FRONTEND_URL
+        value: https://brain-race.onrender.com
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Email: Render's free tier blocks SMTP ports 25/465/587, so production
+      # sets one HTTPS provider key (Resend preferred, then Brevo). SMTP_*
+      # stays useful for local development only.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      # OAuth clients. Register <SERVER_URL>/api/auth/<provider>/callback at
+      # each provider console before enabling social sign-in.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      # Optional: extra origins trusted for OAuth redirect URIs
+      # (comma-separated, e.g. preview deployments). Leave unset if unused.
+      # - key: OAUTH_ALLOWED_ORIGINS
+      #   sync: false
+      # ALLOW_DEV_OTP must stay unset in production: it exposes OTP codes in
+      # API responses, and only outside NODE_ENV=production anyway.

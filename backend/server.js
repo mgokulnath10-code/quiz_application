@@ -1,4 +1,8 @@
-require("dotenv").config();
+// backend/.env is resolved from this file's directory, not the process CWD,
+// so `node backend/server.js` (how the Render service starts) and
+// `cd backend && npm start` both read the same configuration. In production
+// the host's environment variables are authoritative and this file is absent.
+require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
