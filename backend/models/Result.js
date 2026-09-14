@@ -61,6 +61,10 @@ const resultSchema = new mongoose.Schema({
   },
 });
 
+// The platform results list / leaderboard reads the top scores newest
+// first; without this index every read sorts the whole collection.
+resultSchema.index({ score: -1, date: -1 });
+
 module.exports = mongoose.model(
   "Result",
   resultSchema

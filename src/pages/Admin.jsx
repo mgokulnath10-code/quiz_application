@@ -110,6 +110,16 @@ function Admin() {
   const [preview, setPreview] = useState(null);
   const [importSummary, setImportSummary] = useState(null);
 
+  /* =====================
+     AI GENERATION
+  ===================== */
+
+  const [aiTopic, setAiTopic] = useState("");
+  const [aiCount, setAiCount] = useState("10");
+  const [aiDifficulty, setAiDifficulty] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+
   const filtersActive =
     search !== "" ||
     difficultyFilter !== "all" ||
@@ -425,8 +435,10 @@ function Admin() {
      IMPORT FLOW
   ===================== */
 
-  const runImport = async (confirm) => {
-    if (!csvText.trim()) {
+  const runImport = async (confirm, textOverride) => {
+    const text = typeof textOverride === "string" ? textOverride : csvText;
+
+    if (!text.trim()) {
       setImportError("Paste CSV rows or choose a file first.");
       setImportState("idle");
       return;
@@ -444,7 +456,7 @@ function Admin() {
     try {
       const res = await axios.post(
         `${API}/api/admin/questions/import`,
-        { csv: csvText, confirm },
+        { csv: text, confirm },
         getAdminAuth()
       );
 
@@ -482,6 +494,53 @@ function Admin() {
     );
 
     if (ok) runImport(true);
+  };
+
+  /* =====================
+     AI GENERATION FLOW
+  ===================== */
+
+  // Asks the server to draft questions with the AI provider. The draft
+  // arrives as import-ready CSV and flows through the SAME preview +
+  // confirm pipeline as a pasted CSV, so nothing reaches the bank
+  // without the duplicate check and an explicit confirmation.
+  const generateQuestions = async () => {
+    if (!aiTopic.trim()) {
+      setAiError("Enter a topic first, e.g. javascript or world history.");
+      return;
+    }
+
+    setAiBusy(true);
+    setAiError("");
+
+    try {
+      const res = await axios.post(
+        `${API}/api/admin/questions/generate`,
+        {
+          topic: aiTopic.trim(),
+          count: Number(aiCount) || 10,
+          difficulty: aiDifficulty,
+        },
+        getAdminAuth()
+      );
+
+      setCsvText(res.data.csv);
+      setImportSummary(null);
+      setImportState("idle");
+
+      // Reuse the existing preview so the admin sees duplicates and
+      // invalid rows before anything is written.
+      await runImport(false, res.data.csv);
+    } catch (error) {
+      if (handleAdminError(error, navigate)) return;
+
+      setAiError(
+        error.response?.data?.message ||
+          "Could not generate questions. Please try again."
+      );
+    } finally {
+      setAiBusy(false);
+    }
   };
 
   const items = bank?.items || [];
@@ -758,6 +817,86 @@ function Admin() {
             <FiPlus />
             {addBusy ? "Saving…" : "Save question"}
           </button>
+        </div>
+
+        {/* ============ AI GENERATION ============ */}
+
+        <div className="card">
+          <h3 className="card-title">Generate questions with AI</h3>
+
+          <p className="card-desc">
+            Draft questions for any topic automatically. The draft lands in
+            the CSV preview below — check it, then confirm the import.
+            Nothing is added without your confirmation.
+          </p>
+
+          <div className="row" style={{ marginBottom: 16, flexWrap: "wrap" }}>
+            <div className="field" style={{ flex: "1 1 220px" }}>
+              <label htmlFor="ai-topic">Topic</label>
+
+              <input
+                id="ai-topic"
+                className="input"
+                type="text"
+                placeholder="e.g. javascript, space, world history"
+                value={aiTopic}
+                maxLength={60}
+                onChange={(e) => setAiTopic(e.target.value)}
+              />
+            </div>
+
+            <div className="field" style={{ width: 140 }}>
+              <label htmlFor="ai-count">How many</label>
+
+              <select
+                id="ai-count"
+                className="input"
+                value={aiCount}
+                onChange={(e) => setAiCount(e.target.value)}
+              >
+                <option value="5">5</option>
+                <option value="10">10</option>
+                <option value="15">15</option>
+                <option value="20">20</option>
+                <option value="30">30</option>
+              </select>
+            </div>
+
+            <div className="field" style={{ width: 160 }}>
+              <label htmlFor="ai-difficulty">Difficulty</label>
+
+              <select
+                id="ai-difficulty"
+                className="input"
+                value={aiDifficulty}
+                onChange={(e) => setAiDifficulty(e.target.value)}
+              >
+                <option value="">Mixed</option>
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+
+            <div
+              className="field"
+              style={{ display: "flex", alignItems: "flex-end" }}
+            >
+              <button
+                className="btn btn-primary"
+                onClick={generateQuestions}
+                disabled={aiBusy}
+              >
+                {aiBusy ? "Generating…" : "Generate draft"}
+              </button>
+            </div>
+          </div>
+
+          {aiError && (
+            <p className="badge badge-danger" role="alert">
+              {aiError}
+            </p>
+          )}
         </div>
 
         {/* ============ CSV IMPORT ============ */}

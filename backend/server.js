@@ -11,6 +11,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs");
 const cors = require("cors");
+const compression = require("compression");
 const mongoose = require("mongoose");
 
 const connectDB = require("./config/db");
@@ -34,6 +35,10 @@ app.set("trust proxy", 1);
 app.use(cors());
 // Raised from the 100kb default so an admin can paste / upload a CSV batch.
 app.use(express.json({ limit: "1mb" }));
+// Gzip every compressible response (JSON API replies and the served SPA).
+// The hashed asset filenames let clients cache for a year, but the first
+// visit still downloads them, so shrinking them matters.
+app.use(compression());
 
 // Fail fast when the database cannot be reached. Registered before every
 // route so a database-backed request answers 503 DB_UNAVAILABLE immediately
@@ -1490,6 +1495,233 @@ app.get("/api/admin/questions/template", adminAuth, (req, res) => {
 const MAX_IMPORT_ROWS = 2000;
 const MAX_IMPORT_CHARS = 750000;
 
+/* =====================
+   AI QUESTION GENERATION
+===================== */
+
+// Generates draft questions with the Gemini API and returns them in the
+// SAME CSV shape the bulk-import route accepts. Deliberately no write:
+// the admin previews the draft through the existing import preview (with
+// its duplicate detection) and confirms there, so the AI can never add
+// anything to the bank without the operator seeing it first.
+
+const GEMINI_API_BASE =
+  "https://generativelanguage.googleapis.com/v1beta/models";
+
+const AI_CATEGORIES = [
+  "Programming",
+  "Science",
+  "Mathematics",
+  "History",
+  "General",
+];
+
+const AI_DIFFICULTIES = ["easy", "medium", "hard"];
+
+const MAX_QUESTIONS_PER_GENERATION = 30;
+
+// The model must answer with JSON only; still, strip the fences models
+// like to wrap around it and take the outermost array defensively.
+const extractJsonArray = (text) => {
+  const cleaned = String(text || "")
+    .replace(/^\s*```(?:json)?/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+
+  const start = cleaned.indexOf("[");
+  const end = cleaned.lastIndexOf("]");
+
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("The model reply did not contain a question list.");
+  }
+
+  return JSON.parse(cleaned.slice(start, end + 1));
+};
+
+const sanitizeGeneratedQuestion = (raw, fallbackTopic) => {
+  const question = String(raw?.question || "").trim();
+  const options = Array.isArray(raw?.options)
+    ? raw.options.map((option) => String(option || "").trim())
+    : [];
+  const answer = String(raw?.answer || "").trim();
+
+  if (!question || question.length > 300) return null;
+  if (options.length !== 4 || options.some((option) => !option)) return null;
+  if (new Set(options).size !== 4) return null;
+  if (!options.includes(answer)) return null;
+
+  const difficulty = AI_DIFFICULTIES.includes(
+    String(raw?.difficulty || "").toLowerCase()
+  )
+    ? String(raw.difficulty).toLowerCase()
+    : "medium";
+
+  const category = AI_CATEGORIES.includes(String(raw?.category || "").trim())
+    ? String(raw.category).trim()
+    : "General";
+
+  const topic = String(raw?.topic || fallbackTopic || "")
+    .trim()
+    .toLowerCase()
+    .slice(0, 40);
+
+  return {
+    question,
+    options,
+    answer,
+    difficulty,
+    category,
+    topic,
+  };
+};
+
+app.post("/api/admin/questions/generate", adminAuth, async (req, res) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    return res.status(503).json({
+      message:
+        "AI generation is not configured on this server. Set GEMINI_API_KEY " +
+        "in the backend environment (a free key works: " +
+        "aistudio.google.com/apikey) and restart.",
+      code: "AI_NOT_CONFIGURED",
+    });
+  }
+
+  const topic = String(req.body?.topic || "").trim().slice(0, 60);
+  const difficulty = AI_DIFFICULTIES.includes(
+    String(req.body?.difficulty || "").toLowerCase()
+  )
+    ? String(req.body.difficulty).toLowerCase()
+    : "";
+  const count = Math.min(
+    Math.max(Number.parseInt(req.body?.count, 10) || 10, 1),
+    MAX_QUESTIONS_PER_GENERATION
+  );
+
+  if (!topic) {
+    return res.status(400).json({
+      message: "Enter a topic for the questions first.",
+      code: "TOPIC_REQUIRED",
+    });
+  }
+
+  const prompt =
+    `Write ${count} original multiple-choice quiz questions about "${topic}" ` +
+    `for a general quiz platform.` +
+    (difficulty
+      ? ` All questions must be ${difficulty} difficulty.`
+      : ` Mix easy, medium and hard difficulties.`) +
+    ` Each question must have exactly 4 distinct answer options and exactly ` +
+    `one correct answer that is byte-identical to one of the options. ` +
+    `Keep questions self-contained and answerable without images. ` +
+    `Reply with ONLY a JSON array, no prose, no code fences, where every ` +
+    `element is {"question": string, "options": [4 strings], "answer": ` +
+    `string, "difficulty": "easy"|"medium"|"hard", "category": one of ` +
+    `[${AI_CATEGORIES.join(", ")}], "topic": "${topic.toLowerCase()}"}.`;
+
+  let generated;
+
+  try {
+    const controller = new AbortController();
+
+    const timeout = setTimeout(() => controller.abort(), 45000);
+
+    const response = await fetch(
+      `${GEMINI_API_BASE}/${process.env.GEMINI_MODEL || "gemini-2.0-flash"}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+
+      console.log(
+        `Gemini generate failed (${response.status}): ${detail.slice(0, 300)}`
+      );
+
+      return res.status(502).json({
+        message:
+          response.status === 429
+            ? "The AI provider rate-limited the request. Try again in a minute."
+            : "The AI provider rejected the request. Check GEMINI_API_KEY and try again.",
+        code: "AI_PROVIDER_ERROR",
+      });
+    }
+
+    const payload = await response.json();
+
+    const text = payload?.candidates?.[0]?.content?.parts
+      ?.map((part) => part?.text || "")
+      .join("");
+
+    generated = extractJsonArray(text).map((item) =>
+      sanitizeGeneratedQuestion(item, topic)
+    );
+  } catch (error) {
+    console.log(`AI generation failed: ${error.message}`);
+
+    return res.status(502).json({
+      message:
+        error.name === "AbortError"
+          ? "The AI took too long to answer. Try fewer questions."
+          : "Could not generate questions from the AI provider. Try again.",
+      code: "AI_PROVIDER_ERROR",
+    });
+  }
+
+  const valid = generated.filter(Boolean);
+
+  if (valid.length === 0) {
+    return res.status(502).json({
+      message:
+        "The AI replied but produced no usable questions. Try a different topic.",
+      code: "AI_EMPTY_RESULT",
+    });
+  }
+
+  const csv = toCsv([
+    [
+      "question",
+      "option1",
+      "option2",
+      "option3",
+      "option4",
+      "answer",
+      "difficulty",
+      "category",
+      "topic",
+    ],
+    ...valid.map((item) => [
+      item.question,
+      ...item.options,
+      item.answer,
+      item.difficulty,
+      item.category,
+      item.topic,
+    ]),
+  ]);
+
+  res.json({
+    message: `Generated ${valid.length} draft question(s). Preview them, then confirm the import.`,
+    csv,
+    count: valid.length,
+    requested: count,
+  });
+});
+
 // Dry run by default; writes only when the body carries confirm: true. The
 // preview is recomputed on the confirming request, so what gets written is
 // exactly what the response reports.
@@ -2927,7 +3159,24 @@ const spaBuilt = fs.existsSync(spaIndex);
 if (spaBuilt) {
   // index: false keeps `/` out of the static handler; the fallback below
   // owns the shell so `/` and deep links take exactly one path.
-  app.use(express.static(distDir, { index: false }));
+  // Hashed /assets filenames are immutable, so the browser may cache them
+  // for a year; the shell itself must revalidate on every load so a new
+  // deploy is picked up immediately.
+  app.use(
+    express.static(distDir, {
+      index: false,
+      setHeaders(res, filePath) {
+        if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader(
+            "Cache-Control",
+            "public, max-age=31536000, immutable"
+          );
+        } else {
+          res.setHeader("Cache-Control", "no-cache");
+        }
+      },
+    })
+  );
 
   // A missing /assets/<hash>.js must not silently receive the HTML shell:
   // the browser would fail with a confusing MIME error instead of a 404.

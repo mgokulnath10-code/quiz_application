@@ -14,12 +14,19 @@ BrainRace deploys as **one Render web service** that serves two things:
 - **Database** - MongoDB, reached only by the backend through `MONGO_URI`.
 
 The frontend ships with a relative API base: requests become `/api/...`
-against the origin that served the page, so there is no second host and no
-cross-origin setup to maintain. `render.yaml` at the repository root declares
-the single service (Render -> New -> Blueprint); `backend/server.js` mounts the
-static SPA and its fallback at the bottom of the file. The separate static
-hosting of the frontend (Vercel) that an earlier revision of this document
-described has been retired.
+against the origin that served the page. `render.yaml` at the repository root
+declares the single service (Render -> New -> Blueprint); `backend/server.js`
+mounts the static SPA and its fallback at the bottom of the file.
+
+**Split hosting (Vercel + Render) is also supported.** The repository carries
+a `vercel.json` with two rewrites: `/api/*` is proxied to
+`https://brain-race.onrender.com/api/*` (so the relative API base keeps
+working with no CORS), and every non-file path falls back to `/index.html`
+(so deep links and refreshes resolve). With it, the Vercel deployment of the
+frontend and the Render backend work as one app; without it, the Vercel host
+answers 404 for every API call and every deep link. Only pick one hosting
+shape per environment: if the Render service serves the SPA itself, keep
+`SERVER_URL` / `FRONTEND_URL` pointing at the Render origin.
 
 ## 1. SPA fallback (required for every deep link)
 
@@ -56,6 +63,8 @@ Variables), never committed to the repository.
 | `SMTP_FROM` | `From:` address on outgoing OTP mail; falls back to `BrainRace <SMTP_USER>`. | Without a verified sender address, mail may be rejected or filed as spam. |
 | `RESEND_API_KEY` | API key for the Resend HTTPS email API. **Preferred in production** — see §2a. | Optional. Without it (and without a Brevo key) the server falls back to SMTP. |
 | `BREVO_API_KEY` | API key for the Brevo HTTPS email API. Used only when no Resend key is set. | Optional; the second-choice HTTPS provider. |
+| `GEMINI_API_KEY` | API key for AI question generation (admin-only "Generate questions with AI" on the admin page). A free key from aistudio.google.com/apikey works. | Optional. Without it the admin page's generate button answers `AI_NOT_CONFIGURED`; everything else is unaffected. |
+| `GEMINI_MODEL` | Gemini model id used for generation. Defaults to `gemini-2.0-flash`. | Optional; only needs setting if the default model is retired. |
 | `EMAIL_FROM` | Transport-agnostic `From:` address for HTTPS mail — a verified sender on your provider domain, e.g. `BrainRace <no-reply@yourdomain>`. Falls back to `SMTP_FROM`. | Without a verified sender the provider rejects the send and the OTP routes answer `EMAIL_SEND_FAILED`. |
 | `GOOGLE_CLIENT_ID` | Google OAuth client id. | The Google button is hidden and `/api/auth/google` answers `PROVIDER_NOT_CONFIGURED`; Google sign-in cannot start. |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret for the token exchange. | Google sign-in starts but fails at the token exchange. |

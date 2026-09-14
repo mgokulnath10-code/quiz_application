@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://brain-race.onrender.com/api/:path*"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}

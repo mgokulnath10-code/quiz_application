@@ -47,6 +47,13 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      # AI question generation (admin only). A free Gemini API key from
+      # aistudio.google.com/apikey is enough; without it the feature is
+      # hidden behind a clear "not configured" reply.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.0-flash
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
