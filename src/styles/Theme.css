@@ -295,7 +295,10 @@ textarea.input {
 
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  /* The floor is capped at the container width, so a phone-width column
+     collapses to one card instead of overflowing. On a wide container
+     min(100%, 180px) resolves to 180px, exactly as before. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
   gap: 16px;
   margin-bottom: 28px;
 }
@@ -411,6 +414,19 @@ table.data-table {
   color: var(--info);
 }
 
+/* Most badges are short fixed labels (rank chips, status pills, "Admin",
+   "Submitted") and stay on one line. Two places render database or user
+   text inside one — the quiz header's topic/mode chips and any badge in a
+   table cell — and there the text must wrap rather than push the row (and
+   with it the page) wide. A shrink-to-fit inline box only wraps when the
+   text genuinely does not fit, so the short-label look is unaffected. */
+.quiz-meta .badge,
+.data-table .badge {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* Rank highlight for leaderboards */
 .rank-chip {
   display: inline-flex;
@@ -474,7 +490,10 @@ table.data-table {
 
 .grid-2 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  /* Same capped floor as .stat-grid: 320px on desktop, the container
+     width when that is narrower, so the grid goes to one column rather
+     than overflowing the page on a 320px device. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 20px;
 }
 
@@ -518,5 +537,44 @@ table.data-table {
 
   .page-title {
     font-size: 22px;
+  }
+}
+
+/* ============================================================
+   Responsive hardening
+
+   Three steps, used consistently across every stylesheet:
+     - 900px  tablet step: a row stops fitting before phone width
+     - 640px  phone step:  the layout reflows for a handset
+     - 420px  very small:  side-by-side items stack
+
+   Everything below sits inside a media query, so the rendering above
+   the breakpoints is untouched.
+   ============================================================ */
+
+@media (max-width: 640px) {
+  /* Table cells carry user/database text (names, emails, topics, question
+     text). Break an unbroken token instead of letting the table — and the
+     page — grow sideways; the wrapper still scrolls for the columns that
+     genuinely need the width. */
+  .data-table td {
+    overflow-wrap: anywhere;
+  }
+
+  /* Desktop button density is too small for a thumb. */
+  .btn {
+    min-height: 44px;
+  }
+
+  .btn-sm {
+    padding: 10px 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  /* A 180px floor squeezes two cards at this width; one column reads
+     better than two very narrow ones. */
+  .stat-grid {
+    grid-template-columns: 1fr;
   }
 }

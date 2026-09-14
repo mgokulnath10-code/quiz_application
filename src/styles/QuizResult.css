@@ -134,10 +134,20 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   font-size: 13.5px;
 }
 
 .result-rule-list strong {
   font-weight: 600;
   text-align: right;
+}
+
+/* Phone step: 32px of side padding eats a fifth of a 320px screen, and
+   the label/value rows above wrap rather than overflow. */
+
+@media (max-width: 640px) {
+  .quiz-result-card {
+    padding: 28px 20px;
+  }
 }

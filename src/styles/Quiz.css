@@ -26,6 +26,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 18px;
 }
 
@@ -189,6 +190,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   margin-top: 20px;
 }
 
@@ -209,5 +211,43 @@
 
   .question-text {
     font-size: 17px;
+  }
+
+  /* The progress meta and the two timers are two separate facts, not one
+     row: stack them and let the timer pair take its own line. */
+  .quiz-topbar {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .quiz-timer-group {
+    width: 100%;
+  }
+
+  /* The inline score gets its own line; the two actions share the next,
+     equally wide, so neither is squeezed off the card. */
+  .quiz-footer {
+    row-gap: 10px;
+  }
+
+  .quiz-footer > .row {
+    width: 100%;
+  }
+
+  .quiz-footer > .row .btn {
+    flex: 1;
+  }
+}
+
+@media (max-width: 420px) {
+  /* Two side-by-side buttons no longer fit; stack them full-width so the
+     primary action stays comfortable to reach and tap. */
+  .quiz-footer > .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .quiz-footer > .row .btn {
+    width: 100%;
   }
 }

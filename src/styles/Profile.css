@@ -34,3 +34,28 @@
   font-size: 14px;
   color: var(--text-2);
 }
+
+/* The name/email block is a flex item beside the avatar; without this it
+   refuses to shrink below its longest word. */
+
+.profile-identity > div {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .profile-identity {
+    gap: 12px;
+  }
+
+  .profile-avatar {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  /* An address has no spaces to break at. */
+  .profile-name,
+  .profile-email {
+    overflow-wrap: anywhere;
+  }
+}

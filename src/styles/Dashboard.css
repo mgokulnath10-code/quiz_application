@@ -140,7 +140,10 @@
 
 .dash-rec-empty p {
   flex: 1;
-  min-width: 240px;
+  /* The floor keeps the sentence from hugging the icon on desktop; capping
+     it at the container width stops it forcing the row wider than a phone
+     (the row itself already wraps). */
+  min-width: min(240px, 100%);
 }
 
 /* Edge case: a very long topic name must not blow out the row */

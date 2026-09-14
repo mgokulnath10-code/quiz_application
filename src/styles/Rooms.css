@@ -69,6 +69,7 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 14px;
 }
 
@@ -80,6 +81,7 @@
 .room-tile-meta {
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
   margin: 12px 0 16px;
   color: var(--text-2);
   font-size: 13px;
@@ -95,7 +97,9 @@
 
 .room-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  /* Capped floor: a 320px-wide content column collapses to one tile
+     instead of overflowing the page. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
   gap: 16px;
 }
 
@@ -233,8 +237,17 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
   margin-top: 6px;
   font-size: 14px;
+}
+
+/* The badge here holds an option's text, which is database content of
+   unknown length — wrap it instead of letting it run past the card. */
+.review-row .badge {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ===== Settings pills ===== */
@@ -358,6 +371,9 @@
 
 .chat-input-row .input {
   flex: 1;
+  /* An input has an intrinsic minimum width; without this it refuses to
+     shrink and pushes the Send button off a 320px screen. */
+  min-width: 0;
 }
 
 /* Room status dot */

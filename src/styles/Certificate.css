@@ -128,6 +128,15 @@
 
   .student-name {
     font-size: 26px;
+    /* The name is user data with no guaranteed spaces. */
+    overflow-wrap: anywhere;
+  }
+
+  /* Two score boxes and a divider no longer fit on one line at 320px. */
+  .certificate-score-section {
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-bottom: 28px;
   }
 
   .certificate-footer {

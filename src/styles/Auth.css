@@ -253,3 +253,19 @@
   margin: 6px 0 0;
 }
 
+/* ============ ADDENDUM: phone step ============ */
+
+/* 32px of side padding and 40px of vertical page padding is a fifth of a
+   320px screen. The diagnostics rows already wrap, and .uri-value breaks
+   long callback URIs, so only the shell needs to give way. */
+
+@media (max-width: 640px) {
+  .auth-page {
+    padding: 28px 14px;
+  }
+
+  .auth-card {
+    padding: 28px 20px;
+  }
+}
+

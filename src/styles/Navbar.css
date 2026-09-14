@@ -96,6 +96,14 @@
   color: var(--text-2);
 }
 
+/* Tablet step: the username is the first thing that stops fitting, and
+   with a long name the row already overflows above the phone breakpoint. */
+@media (max-width: 900px) {
+  .nav-username {
+    display: none;
+  }
+}
+
 @media (max-width: 720px) {
   .navbar-inner {
     gap: 12px;
@@ -108,5 +116,44 @@
   .nav-link {
     padding: 7px 8px;
     font-size: 13px;
+  }
+}
+
+/* Phone step: the brand, up to five links and the avatar/logout cannot
+   share one 360px row. The bar keeps its 60px height — the brand and the
+   user block are pinned and the link strip scrolls horizontally inside the
+   bar, so nothing is clipped and the page itself never scrolls sideways. */
+@media (max-width: 640px) {
+  .navbar-inner {
+    gap: 10px;
+    padding: 0 14px;
+  }
+
+  .brand {
+    flex-shrink: 0;
+  }
+
+  .brand-name {
+    font-size: 15px;
+  }
+
+  .nav-links {
+    min-width: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .nav-links::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-link {
+    white-space: nowrap;
+  }
+
+  .nav-user {
+    flex-shrink: 0;
+    gap: 8px;
   }
 }
