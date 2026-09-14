@@ -14,19 +14,13 @@ BrainRace deploys as **one Render web service** that serves two things:
 - **Database** - MongoDB, reached only by the backend through `MONGO_URI`.
 
 The frontend ships with a relative API base: requests become `/api/...`
-against the origin that served the page. `render.yaml` at the repository root
-declares the single service (Render -> New -> Blueprint); `backend/server.js`
-mounts the static SPA and its fallback at the bottom of the file.
-
-**Split hosting (Vercel + Render) is also supported.** The repository carries
-a `vercel.json` with two rewrites: `/api/*` is proxied to
-`https://brain-race.onrender.com/api/*` (so the relative API base keeps
-working with no CORS), and every non-file path falls back to `/index.html`
-(so deep links and refreshes resolve). With it, the Vercel deployment of the
-frontend and the Render backend work as one app; without it, the Vercel host
-answers 404 for every API call and every deep link. Only pick one hosting
-shape per environment: if the Render service serves the SPA itself, keep
-`SERVER_URL` / `FRONTEND_URL` pointing at the Render origin.
+against the origin that served the page, so there is exactly one deploy
+target and no cross-origin setup to maintain. `render.yaml` at the
+repository root declares the single service (Render -> New -> Blueprint);
+`backend/server.js` mounts the static SPA and its fallback at the bottom of
+the file. Frontend-only hosting (Vercel or Netlify) in front of the backend
+is NOT supported: without the Express app serving the SPA, every `/api`
+call and every deep link 404s on that host.
 
 ## 1. SPA fallback (required for every deep link)
 
