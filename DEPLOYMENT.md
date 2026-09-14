@@ -53,6 +53,9 @@ Variables), never committed to the repository.
 | `SMTP_USER` | SMTP authentication user. | Mail authentication fails; OTP delivery fails. |
 | `SMTP_PASS` | SMTP authentication credential. | Mail authentication fails; OTP delivery fails. |
 | `SMTP_FROM` | `From:` address on outgoing OTP mail; falls back to `BrainRace <SMTP_USER>`. | Without a verified sender address, mail may be rejected or filed as spam. |
+| `RESEND_API_KEY` | API key for the Resend HTTPS email API. **Preferred in production** — see §2a. | Optional. Without it (and without a Brevo key) the server falls back to SMTP. |
+| `BREVO_API_KEY` | API key for the Brevo HTTPS email API. Used only when no Resend key is set. | Optional; the second-choice HTTPS provider. |
+| `EMAIL_FROM` | Transport-agnostic `From:` address for HTTPS mail — a verified sender on your provider domain, e.g. `BrainRace <no-reply@yourdomain>`. Falls back to `SMTP_FROM`. | Without a verified sender the provider rejects the send and the OTP routes answer `EMAIL_SEND_FAILED`. |
 | `GOOGLE_CLIENT_ID` | Google OAuth client id. | The Google button is hidden and `/api/auth/google` answers `PROVIDER_NOT_CONFIGURED`; Google sign-in cannot start. |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret for the token exchange. | Google sign-in starts but fails at the token exchange. |
 | `SERVER_URL` | Public origin of the **backend**; used to build the OAuth `redirect_uri`. | OAuth sign-in answers `OAUTH_ORIGIN_NOT_CONFIGURED` unless the origin is otherwise allowlisted via `FRONTEND_URL` / `OAUTH_ALLOWED_ORIGINS`. |
@@ -80,6 +83,44 @@ an earlier commit. The only committed env template today is the root
 `.env.example`, and it documents the frontend-only `VITE_API_BASE_URL`. Treat
 the host dashboard as the source of truth for the backend variables above, and
 never commit their values.
+
+### 2a. Email transport, and why Render's free tier needs HTTPS
+
+Registration, the unverified-login path and password reset all send a one-time
+code by email, so email delivery is on the critical path of sign-up.
+
+**Render's free tier blocks outbound traffic to SMTP ports 25, 465 and 587**
+(their documented free-tier limitation). Gmail SMTP uses port 587, so on a
+free Render web service an SMTP send is dropped: it cannot succeed, and
+without a bound it makes `/api/register` and `/api/forgot-password` appear to
+hang. The backend therefore picks a transport at send time:
+
+1. `RESEND_API_KEY` set → **Resend** over HTTPS.
+2. else `BREVO_API_KEY` set → **Brevo** over HTTPS.
+3. else `SMTP_*` set → **SMTP** (works locally; blocked on Render free tier).
+4. else none — OTP mail cannot be sent (`ALLOW_DEV_OTP` may expose codes
+   outside production instead).
+
+When both HTTPS keys are present Resend wins. HTTPS works on the free tier, so
+setting one provider key is the supported production configuration; `SMTP_*`
+can stay set for local development and is simply not chosen.
+
+SMTP stays fully working for local development. Its connection, greeting and
+socket timeouts are bounded, plus a hard per-attempt deadline, so a blocked or
+unreachable mail port fails in seconds with the normal `503 EMAIL_SEND_FAILED`
+rather than hanging for minutes.
+
+Operators can see which transport a server would use, by name only, at
+`GET /api/health/config` → `emailTransport: "resend" | "brevo" | "smtp" |
+"none"`. The endpoint never returns a key or credential.
+
+**Alternative if you prefer to keep Gmail SMTP:** upgrade the Render instance
+to a paid plan, which is not subject to the free-tier SMTP port block. No code
+change is needed — leave `SMTP_*` set and leave the HTTPS keys unset.
+
+`RESEND_BASE_URL` / `BREVO_BASE_URL` exist only as test hooks for
+`npm run selfcheck:email` (they redirect the provider request to a local stub).
+They must never be set in production.
 
 ## 3. OAuth redirect URIs to register
 

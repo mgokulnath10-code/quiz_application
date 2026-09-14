@@ -13,6 +13,7 @@
     "selfcheck:oauth": "node scripts/selfcheckOauth.mjs",
     "selfcheck:admin": "node scripts/selfcheckAdmin.mjs",
     "selfcheck:db": "node scripts/selfcheckDb.mjs",
+    "selfcheck:email": "node scripts/selfcheckEmail.mjs",
     "check:responsive": "node scripts/checkResponsive.mjs"
   },
   "dependencies": {

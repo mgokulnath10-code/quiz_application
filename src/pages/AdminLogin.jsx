@@ -18,7 +18,7 @@ import { messageForError } from "../utils/apiError";
 import useSlowFlag from "../utils/useSlowFlag";
 import "../styles/Auth.css";
 
-import API from "../config/api";
+import API, { API_ORIGIN } from "../config/api";
 
 const PROVIDER_LABEL = {
   google: "Google",
@@ -139,7 +139,7 @@ function AdminLogin() {
 
         if (res.data && res.data.adminConfigured === false) {
           setConfigWarning(
-            `This server (${API}) has no ADMIN_USERNAME / ADMIN_PASSWORD ` +
+            `This server (${API_ORIGIN}) has no ADMIN_USERNAME / ADMIN_PASSWORD ` +
               "configured, so no credentials can be accepted. Set them in the " +
               "backend environment (e.g. Render) and redeploy."
           );
@@ -370,7 +370,7 @@ function AdminLogin() {
 
             <div className="diagnostics-body">
               <p className="muted">
-                Server: <code>{API}</code>
+                Server: <code>{API_ORIGIN}</code>
               </p>
 
               <ul className="diagnostics-list">

@@ -6,6 +6,7 @@ import {
   FiBarChart2,
   FiAlertTriangle,
   FiRefreshCw,
+  FiLogIn,
 } from "react-icons/fi";
 import {
   getAdminAuth,
@@ -46,6 +47,18 @@ function Results() {
       setState("ready");
     } catch (error) {
       console.error(error);
+
+      const status = error.response?.status;
+      const code = error.response?.data?.code;
+
+      // The platform results list requires a signed-in account. A 401 means
+      // the token was missing, expired or rejected, which is a signed-out
+      // state — not a broken page — so it gets its own explanation and a way
+      // back in instead of the raw "Access Denied".
+      if (status === 401 || code === "AUTH_REQUIRED") {
+        setState("signed-out");
+        return;
+      }
 
       setErrorMessage(
         error.response?.data?.message ||
@@ -153,6 +166,47 @@ function Results() {
                 waking up.
               </p>
             )}
+          </div>
+        )}
+
+        {state === "signed-out" && (
+          <div className="card empty-state">
+            <span
+              className="empty-icon"
+              style={{
+                background: "var(--accent-soft)",
+                color: "var(--accent)",
+              }}
+            >
+              <FiLogIn />
+            </span>
+
+            <h3 className="card-title">Log in to view results</h3>
+
+            <p
+              role="alert"
+              style={{ maxWidth: 520, margin: "0 auto 18px" }}
+            >
+              You are signed out, or your session has expired. The platform
+              results list is only available to signed-in accounts.
+            </p>
+
+            <div className="row" style={{ justifyContent: "center" }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => navigate("/login")}
+              >
+                <FiLogIn />
+                Log in
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                onClick={() => navigate("/")}
+              >
+                Back to home
+              </button>
+            </div>
           </div>
         )}
 

@@ -8,7 +8,7 @@ import {
 } from "../utils/apiError";
 import "../styles/Auth.css";
 
-import API from "../config/api";
+import API, { API_ORIGIN } from "../config/api";
 
 // Inline brand marks for the social buttons
 // (Feather has no Google/Microsoft glyphs).
@@ -305,7 +305,7 @@ function Login() {
               className="badge badge-warning"
               style={UNAVAILABLE_STYLE}
             >
-              Social sign-in is unavailable: the server ({API}) could not
+              Social sign-in is unavailable: the server ({API_ORIGIN}) could not
               report its OAuth configuration.
             </p>
           ) : (
@@ -329,7 +329,7 @@ function Login() {
                     style={UNAVAILABLE_STYLE}
                   >
                     {label} sign-in is unavailable: OAuth is not configured
-                    on {API}.
+                    on {API_ORIGIN}.
                   </p>
                 );
               })}

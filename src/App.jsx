@@ -87,11 +87,6 @@ function App() {
 />
 
           <Route
-  path="/results"
-  element={<Results />}
-/>
-
-          <Route
             path="/quiz"
             element={
               <ProtectedRoute>

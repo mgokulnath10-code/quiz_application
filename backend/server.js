@@ -4,6 +4,8 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 
 const express = require("express");
+const path = require("path");
+const fs = require("fs");
 const cors = require("cors");
 const mongoose = require("mongoose");
 
@@ -50,6 +52,7 @@ const userAuth = require("./middleware/auth");
 const {
   sendOtpEmail,
   smtpConfigured,
+  chooseEmailTransport,
   devOtpAllowed,
   MailDeliveryError,
 } = require("./utils/mailer");
@@ -138,18 +141,19 @@ const bootstrapDatabase = async () => {
     );
   }
 
-  if (!smtpConfigured()) {
+  if (chooseEmailTransport() === "none") {
     if (devOtpAllowed()) {
       console.warn(
-        "WARNING: SMTP is not configured. ALLOW_DEV_OTP=true " +
+        "WARNING: No email transport is configured. ALLOW_DEV_OTP=true " +
           "and NODE_ENV is not production, so OTP codes will be " +
           "exposed through the API for development only."
       );
     } else {
       console.warn(
-        "WARNING: SMTP is not configured and dev OTP is off — " +
-          "users cannot receive OTP emails. Set SMTP_HOST / " +
-          "SMTP_PORT / SMTP_USER / SMTP_PASS."
+        "WARNING: No email transport is configured and dev OTP is off — " +
+          "users cannot receive OTP emails. Set RESEND_API_KEY or " +
+          "BREVO_API_KEY (HTTPS, works on Render's free tier), or " +
+          "SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS."
       );
     }
   }
@@ -228,11 +232,15 @@ const invalidateQuestionReadCache = () => questionReadCache.clear();
 const roomRoutes = require("./routes/roomRoutes");
 
 /* =====================
-   HOME
+   HEALTH
 ===================== */
 
-app.get("/", (req, res) => {
-  res.send("Backend Running");
+// Production serves the SPA from this origin too, so `/` belongs to the
+// frontend shell. Operators and the platform health check poll this
+// machine-readable endpoint instead. Not a database route, so it keeps
+// answering while MongoDB is unreachable (see utils/dbGuard.js).
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok" });
 });
 
 /* =====================
@@ -758,6 +766,10 @@ app.get("/api/health/config", (req, res) => {
       process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD
     ),
     smtpConfigured: smtpConfigured(),
+    // Which transport a send would actually use right now: an HTTP provider
+    // ("resend" / "brevo", both usable on Render's free tier) wins over SMTP,
+    // which Render blocks on ports 25/465/587. Names only — never a key.
+    emailTransport: chooseEmailTransport(),
     googleConfigured: !!(
       process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
     ),
@@ -2896,6 +2908,68 @@ app.delete(
     }
   }
 );
+/* =====================
+   STATIC SPA
+===================== */
+
+// Production is a single Render web service: this app serves the API under
+// /api/* and the built Vite SPA (../dist) everywhere else. Registered after
+// every API route so no API path can be shadowed, and skipped entirely when
+// dist/ is absent so a backend-only local run still boots.
+const distDir = path.resolve(__dirname, "..", "dist");
+const spaIndex = path.join(distDir, "index.html");
+const spaBuilt = fs.existsSync(spaIndex);
+
+if (spaBuilt) {
+  // index: false keeps `/` out of the static handler; the fallback below
+  // owns the shell so `/` and deep links take exactly one path.
+  app.use(express.static(distDir, { index: false }));
+
+  // A missing /assets/<hash>.js must not silently receive the HTML shell:
+  // the browser would fail with a confusing MIME error instead of a 404.
+  const ASSET_EXTENSIONS = new Set([
+    ".js", ".mjs", ".css", ".map", ".svg", ".png", ".jpg", ".jpeg", ".gif",
+    ".webp", ".ico", ".woff", ".woff2", ".ttf", ".txt", ".json",
+  ]);
+
+  app.use((req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+
+    if (req.path.startsWith("/api/")) return next();
+
+    const ext = path.extname(req.path).toLowerCase();
+    if (ASSET_EXTENSIONS.has(ext)) {
+      return res.status(404).json({
+        message: "Not found",
+        code: "STATIC_ASSET_NOT_FOUND",
+      });
+    }
+
+    // Client-side routes (/login, /rooms, /oauth/callback, ...) get the
+    // shell and let the router take over.
+    return res.sendFile(spaIndex);
+  });
+} else {
+  console.warn(
+    "No frontend build found at " +
+      distDir +
+      " - the API is served, but `/` answers a placeholder. Run `npm run build` at the repository root (or let the deploy build it) to serve the SPA."
+  );
+
+  app.get("/", (req, res) => {
+    res.send("Backend Running (frontend build not found)");
+  });
+}
+
+// Unmatched API paths stay JSON: a typo'd fetch() must never receive the
+// HTML shell and appear to succeed. All methods are covered.
+app.use("/api", (req, res) => {
+  res.status(404).json({
+    message: "Not found",
+    code: "API_ROUTE_NOT_FOUND",
+  });
+});
+
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
