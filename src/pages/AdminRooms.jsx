@@ -27,10 +27,6 @@ function AdminRooms() {
 
   const [rooms, setRooms] = useState([]);
 
-  useEffect(() => {
-    fetchRooms();
-  }, []);
-
   const fetchRooms = async () => {
     try {
       const res = await axios.get(
@@ -50,6 +46,11 @@ function AdminRooms() {
       }
     }
   };
+
+  useEffect(() => {
+    fetchRooms();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const forceEnd = async (room) => {
     if (!window.confirm(`Force end the quiz in "${room.name}"?`)) {

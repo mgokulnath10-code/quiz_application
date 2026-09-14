@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { FiShield, FiArrowLeft } from "react-icons/fi";
@@ -11,8 +11,28 @@ function AdminLogin() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [configWarning, setConfigWarning] = useState("");
 
   const navigate = useNavigate();
+
+  // Ask the server whether admin credentials exist at all.
+  // The most common real-world cause is a deployed backend
+  // that cannot read the developer's local backend/.env.
+
+  useEffect(() => {
+    axios
+      .get(`${API}/api/health/config`)
+      .then((res) => {
+        if (res.data && res.data.adminConfigured === false) {
+          setConfigWarning(
+            "This server has no ADMIN_USERNAME / ADMIN_PASSWORD configured, " +
+              "so no credentials can be accepted. Set them in the backend " +
+              "environment (e.g. Render) and redeploy."
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLogin = async () => {
     if (!username || !password) {
@@ -39,10 +59,14 @@ function AdminLogin() {
 
       navigate("/admin");
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-          "Invalid admin credentials."
-      );
+      const data = err.response?.data;
+
+      if (data?.code === "ADMIN_NOT_CONFIGURED") {
+        setConfigWarning(data.message);
+        setError(data.message);
+      } else {
+        setError(data?.message || "Invalid admin credentials.");
+      }
     } finally {
       setLoading(false);
     }
@@ -70,6 +94,20 @@ function AdminLogin() {
         <p className="auth-subtitle">
           Restricted area. Authorized staff only.
         </p>
+
+        {configWarning && (
+          <p
+            className="badge badge-warning"
+            style={{
+              marginBottom: 16,
+              padding: "6px 12px",
+              display: "block",
+              whiteSpace: "normal",
+            }}
+          >
+            {configWarning}
+          </p>
+        )}
 
         {error && (
           <p

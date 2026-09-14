@@ -39,6 +39,22 @@ const generateRoomId = async () => {
   }
 };
 
+// Normalised signature used to reject duplicate questions
+// (a rapid double-submit must not insert the same question
+// twice, while genuinely different questions stay allowed).
+
+const normalizeText = (value) =>
+  String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const questionSignature = (question) =>
+  [
+    normalizeText(question.question),
+    ...(question.options || []).map(normalizeText),
+  ].join("|");
+
 /* =====================
    MAIN WEBSITE ADMIN
    (Controls everything)
@@ -407,13 +423,32 @@ router.post(
         });
       }
 
-      room.questions.push({
+      const newQuestion = {
         question: String(question).trim(),
         options: options.map((option) =>
           String(option).trim()
         ),
         answer: String(answer).trim(),
-      });
+      };
+
+      // Guard against a rapid double submit creating the
+      // same question twice in this room.
+
+      const signature = questionSignature(newQuestion);
+
+      const duplicate = room.questions.some(
+        (existing) =>
+          questionSignature(existing) === signature
+      );
+
+      if (duplicate) {
+        return res.status(409).json({
+          message: "This question is already in this room",
+          code: "DUPLICATE_QUESTION",
+        });
+      }
+
+      room.questions.push(newQuestion);
 
       await room.save();
 
@@ -638,7 +673,14 @@ router.get(
         )
         .sort(
           (a, b) => b.score - a.score
-        );
+        )
+        // Project only the public fields — never answers.
+        .map((p) => ({
+          userId: p.userId,
+          name: p.name,
+          score: p.score,
+          total: p.total,
+        }));
 
       res.json(leaderboard);
     } catch (error) {
@@ -747,12 +789,27 @@ router.post("/:roomId/chat", auth, async (req, res) => {
 });
 
 // Rooms I Administer
+// Aggregation returns only what the lobby needs
+// (counts instead of full chat/questions arrays).
 
 router.get("/mine", auth, async (req, res) => {
   try {
-    const rooms = await Room.find({
-      "admin.userId": req.user.id,
-    }).sort({ createdAt: -1 });
+    const rooms = await Room.aggregate([
+      { $match: { "admin.userId": req.user.id } },
+      {
+        $project: {
+          name: 1,
+          roomId: 1,
+          status: 1,
+          admin: 1,
+          createdAt: 1,
+          settings: 1,
+          participantCount: { $size: "$participants" },
+          questionCount: { $size: "$questions" },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+    ]);
 
     res.json(rooms);
   } catch (error) {
@@ -764,14 +821,31 @@ router.get("/mine", auth, async (req, res) => {
 
 router.get("/joined", auth, async (req, res) => {
   try {
-    const rooms = await Room.find({
-      participants: {
-        $elemMatch: {
-          userId: req.user.id,
-          removed: false,
+    const rooms = await Room.aggregate([
+      {
+        $match: {
+          participants: {
+            $elemMatch: {
+              userId: req.user.id,
+              removed: false,
+            },
+          },
         },
       },
-    }).sort({ createdAt: -1 });
+      {
+        $project: {
+          name: 1,
+          roomId: 1,
+          status: 1,
+          admin: 1,
+          createdAt: 1,
+          settings: 1,
+          participantCount: { $size: "$participants" },
+          questionCount: { $size: "$questions" },
+        },
+      },
+      { $sort: { createdAt: -1 } },
+    ]);
 
     res.json(rooms);
   } catch (error) {
@@ -808,7 +882,37 @@ router.get("/:roomId", auth, async (req, res) => {
         .json({ message: "Join the room first" });
     }
 
-    res.json(room);
+    // The chat array is fetched separately (and can be
+    // large), so it is stripped from this polled view.
+
+    const roomView = room.toObject();
+
+    delete roomView.chat;
+
+    // Answer review is admin-only, or participant-only when
+    // the room has allowReview enabled. A participant must
+    // never receive another participant's answers, and no
+    // answers at all when review is switched off.
+
+    if (!isRoomAdmin(room, userId)) {
+      const allowReview =
+        roomView.settings?.allowReview !== false;
+
+      roomView.participants = roomView.participants.map(
+        (participant) => {
+          if (
+            allowReview &&
+            participant.userId === userId
+          ) {
+            return participant;
+          }
+
+          return { ...participant, answers: [] };
+        }
+      );
+    }
+
+    res.json(roomView);
   } catch (error) {
     res.status(500).json(error);
   }

@@ -16,10 +16,6 @@ function Results() {
 
   const isAdmin = localStorage.getItem("isAdmin") === "true";
 
-  useEffect(() => {
-    fetchResults();
-  }, []);
-
   const fetchResults = async () => {
     try {
       const res = await axios.get(`${API}/api/results`);
@@ -29,6 +25,10 @@ function Results() {
       console.error(error);
     }
   };
+
+  useEffect(() => {
+    fetchResults();
+  }, []);
 
   const deleteResult = async (id) => {
     const confirmDelete = window.confirm(

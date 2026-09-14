@@ -37,19 +37,27 @@ function Rooms() {
 
   const [myRooms, setMyRooms] = useState([]);
   const [joinedRooms, setJoinedRooms] = useState([]);
-
   const [createdRoom, setCreatedRoom] = useState(null);
+
+  const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
+  const [loadingRooms, setLoadingRooms] = useState(true);
 
   const fetchRooms = async () => {
     try {
-      const mine = await axios.get(`${API}/api/rooms/mine`, getAuth());
+      // Parallel fetch halves the lobby wait.
 
-      const joined = await axios.get(`${API}/api/rooms/joined`, getAuth());
+      const [mine, joined] = await Promise.all([
+        axios.get(`${API}/api/rooms/mine`, getAuth()),
+        axios.get(`${API}/api/rooms/joined`, getAuth()),
+      ]);
 
       setMyRooms(mine.data);
       setJoinedRooms(joined.data);
     } catch (error) {
       console.error(error);
+    } finally {
+      setLoadingRooms(false);
     }
   };
 
@@ -58,10 +66,15 @@ function Rooms() {
   }, []);
 
   const createRoom = async () => {
-    if (!roomName.trim()) {
-      alert("Please enter a room name.");
+    if (!roomName.trim() || creating) {
+      if (!roomName.trim()) {
+        alert("Please enter a room name.");
+      }
+
       return;
     }
+
+    setCreating(true);
 
     try {
       const res = await axios.post(
@@ -70,19 +83,50 @@ function Rooms() {
         getAuth()
       );
 
-      setCreatedRoom(res.data.room);
+      const created = res.data.room;
+
+      setCreatedRoom(created);
       setRoomName("");
-      fetchRooms();
+
+      // Update the list straight from the response instead of
+      // paying for a second round trip to the API.
+
+      setMyRooms((prev) => {
+        if (prev.some((r) => r.roomId === created.roomId)) {
+          return prev;
+        }
+
+        return [
+          {
+            name: created.name,
+            roomId: created.roomId,
+            status: created.status,
+            admin: created.admin,
+            createdAt: created.createdAt,
+            settings: created.settings,
+            participantCount: created.participants?.length ?? 0,
+            questionCount: created.questions?.length ?? 0,
+          },
+          ...prev,
+        ];
+      });
     } catch (error) {
       alert(error.response?.data?.message || "Error creating room");
+    } finally {
+      setCreating(false);
     }
   };
 
   const joinRoom = async () => {
-    if (!joinId.trim()) {
-      alert("Please enter a room ID.");
+    if (!joinId.trim() || joining) {
+      if (!joinId.trim()) {
+        alert("Please enter a room ID.");
+      }
+
       return;
     }
+
+    setJoining(true);
 
     try {
       await axios.post(
@@ -94,6 +138,8 @@ function Rooms() {
       navigate(`/room/${joinId.trim().toUpperCase()}`);
     } catch (error) {
       alert(error.response?.data?.message || "Could not join room");
+    } finally {
+      setJoining(false);
     }
   };
 
@@ -124,12 +170,13 @@ function Rooms() {
         <div className="room-tile-meta">
           <span>
             <FiUsers />
-            {room.participants.length} participants
+            {room.participantCount ?? room.participants?.length ?? 0}{" "}
+            participants
           </span>
 
           <span>
             <FiHelpCircle />
-            {room.questions.length} questions
+            {room.questionCount ?? room.questions?.length ?? 0} questions
           </span>
         </div>
 
@@ -260,9 +307,13 @@ function Rooms() {
               />
             </div>
 
-            <button className="btn btn-primary" onClick={createRoom}>
+            <button
+              className="btn btn-primary"
+              onClick={createRoom}
+              disabled={creating}
+            >
               <FiPlus />
-              Create room
+              {creating ? "Creating..." : "Create room"}
             </button>
           </div>
 
@@ -291,9 +342,13 @@ function Rooms() {
               />
             </div>
 
-            <button className="btn btn-primary" onClick={joinRoom}>
+            <button
+              className="btn btn-primary"
+              onClick={joinRoom}
+              disabled={joining}
+            >
               <FiLogIn />
-              Join room
+              {joining ? "Joining..." : "Join room"}
             </button>
           </div>
         </div>
@@ -305,7 +360,11 @@ function Rooms() {
         </h2>
 
         {myRooms.length === 0 ? (
-          <p className="muted">You haven't created any rooms yet.</p>
+          loadingRooms ? (
+            <p className="muted">Loading rooms...</p>
+          ) : (
+            <p className="muted">You haven't created any rooms yet.</p>
+          )
         ) : (
           <div className="room-list">{myRooms.map(renderRoomTile)}</div>
         )}
@@ -317,7 +376,11 @@ function Rooms() {
         </h2>
 
         {joinedRooms.length === 0 ? (
-          <p className="muted">You haven't joined any rooms yet.</p>
+          loadingRooms ? (
+            <p className="muted">Loading rooms...</p>
+          ) : (
+            <p className="muted">You haven't joined any rooms yet.</p>
+          )
         ) : (
           <div className="room-list">{joinedRooms.map(renderRoomTile)}</div>
         )}

@@ -10,10 +10,6 @@ function Leaderboard() {
   const [results, setResults] = useState([]);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchResults();
-  }, []);
-
   const fetchResults = async () => {
     try {
       const res = await axios.get(`${API}/api/results`);
@@ -25,6 +21,10 @@ function Leaderboard() {
       console.error(error);
     }
   };
+
+  useEffect(() => {
+    fetchResults();
+  }, []);
 
   return (
     <div className="page">

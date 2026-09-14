@@ -18,6 +18,7 @@ function ForgotPassword() {
 
   const [loading, setLoading] = useState(false);
   const [devCode, setDevCode] = useState("");
+  const [error, setError] = useState("");
 
   // Step 1 — request the reset code. The server
   // answers the same whether or not the email
@@ -30,6 +31,7 @@ function ForgotPassword() {
     }
 
     setLoading(true);
+    setError("");
 
     try {
       const res = await axios.post(
@@ -37,15 +39,20 @@ function ForgotPassword() {
         { email }
       );
 
-      setInfo(res.data.message);
+      // Only present when the server explicitly enables
+      // dev OTP; otherwise the code arrives by email.
 
       setDevCode(res.data.devCode || "");
 
       setStep(2);
-    } catch (error) {
-      alert(
-        error.response?.data?.message ||
-          "Could not send the code."
+    } catch (err) {
+      // 503 EMAIL_NOT_CONFIGURED / EMAIL_SEND_FAILED —
+      // stay on this step so the user is not left waiting
+      // for a code that can never arrive.
+
+      setError(
+        err.response?.data?.message ||
+          "Could not send the code. Please try again."
       );
     } finally {
       setLoading(false);
@@ -61,6 +68,7 @@ function ForgotPassword() {
     }
 
     setLoading(true);
+    setError("");
 
     try {
       await axios.post(`${API}/api/verify-otp`, {
@@ -70,9 +78,9 @@ function ForgotPassword() {
       });
 
       setStep(3);
-    } catch (error) {
-      alert(
-        error.response?.data?.message ||
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
           "Incorrect or expired code."
       );
     } finally {
@@ -94,6 +102,7 @@ function ForgotPassword() {
     }
 
     setLoading(true);
+    setError("");
 
     try {
       await axios.post(`${API}/api/reset-password`, {
@@ -105,9 +114,9 @@ function ForgotPassword() {
       alert("Password updated. Please log in.");
 
       navigate("/login");
-    } catch (error) {
-      alert(
-        error.response?.data?.message ||
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
           "Could not reset the password."
       );
     } finally {
@@ -139,6 +148,20 @@ function ForgotPassword() {
           {step === 2 && `Enter the code sent to ${email}.`}
           {step === 3 && "Choose a new password for your account."}
         </p>
+
+        {error && (
+          <p
+            className="badge badge-danger"
+            style={{
+              display: "block",
+              whiteSpace: "normal",
+              marginBottom: 14,
+              padding: "6px 12px",
+            }}
+          >
+            {error}
+          </p>
+        )}
 
         {devCode && (
           <p

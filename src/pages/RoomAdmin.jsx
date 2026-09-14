@@ -6,7 +6,6 @@ import {
   FiPlay,
   FiSquare,
   FiTrash2,
-  FiPlus,
   FiCopy,
   FiUserMinus,
   FiSettings,
@@ -54,6 +53,17 @@ function RoomAdmin() {
 
   const settingsDirtyRef = useRef(false);
 
+  // Polling guards: never stack requests, and stop the
+  // poll once the room has ended.
+
+  const fetchingRef = useRef(false);
+  const roomStatusRef = useRef("waiting");
+
+  // React state is stale within a single tick, so the
+  // add-question double-submit guard uses a ref.
+
+  const savingQuestionRef = useRef(false);
+
   const markDirty = () => {
     settingsDirtyRef.current = true;
 
@@ -69,19 +79,20 @@ function RoomAdmin() {
 
   const user = JSON.parse(localStorage.getItem("user")) || {};
 
-  useEffect(() => {
-    fetchRoom();
-
-    const timer = setInterval(fetchRoom, 3000);
-
-    return () => clearInterval(timer);
-  }, [roomId]);
-
   const fetchRoom = async () => {
+    // Skip a tick rather than stacking requests on a slow
+    // connection.
+
+    if (fetchingRef.current) return;
+
+    fetchingRef.current = true;
+
     try {
       const res = await axios.get(`${API}/api/rooms/${roomId}`, getAuth());
 
       setRoom(res.data);
+
+      roomStatusRef.current = res.data.status;
 
       // Polling must not clobber unsaved local edits.
 
@@ -107,8 +118,37 @@ function RoomAdmin() {
       }
     } catch (error) {
       console.error(error);
+    } finally {
+      fetchingRef.current = false;
     }
   };
+
+  useEffect(() => {
+    fetchRoom();
+
+    const tick = () => {
+      if (document.hidden) return;
+      if (roomStatusRef.current === "ended") return;
+
+      fetchRoom();
+    };
+
+    const timer = setInterval(tick, 3000);
+
+    const onVisible = () => {
+      if (!document.hidden && roomStatusRef.current !== "ended") {
+        fetchRoom();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
 
   const applyTimerPreset = (preset) => {
     markDirty();
@@ -222,11 +262,21 @@ function RoomAdmin() {
     }
   };
 
+  const [savingQuestion, setSavingQuestion] = useState(false);
+
   const addQuestion = async () => {
+    // Ref guard (state is stale inside the same tick, so a
+    // fast double click could otherwise submit twice).
+
+    if (savingQuestionRef.current) return;
+
     if (!question || !option1 || !option2 || !option3 || !option4 || !answer) {
       alert("Please fill in all fields.");
       return;
     }
+
+    savingQuestionRef.current = true;
+    setSavingQuestion(true);
 
     try {
       await axios.post(
@@ -248,7 +298,15 @@ function RoomAdmin() {
 
       fetchRoom();
     } catch (error) {
-      alert(error.response?.data?.message || "Could not add question");
+      if (error.response?.status === 409) {
+        alert("This question is already in the room.");
+        fetchRoom();
+      } else {
+        alert(error.response?.data?.message || "Could not add question");
+      }
+    } finally {
+      savingQuestionRef.current = false;
+      setSavingQuestion(false);
     }
   };
 
@@ -423,6 +481,13 @@ function RoomAdmin() {
           </button>
 
           <button
+            className={`tab ${tab === "answers" ? "active" : ""}`}
+            onClick={() => setTab("answers")}
+          >
+            Answers
+          </button>
+
+          <button
             className={`tab ${tab === "chat" ? "active" : ""}`}
             onClick={() => setTab("chat")}
           >
@@ -594,11 +659,10 @@ function RoomAdmin() {
 
               <button
                 className="btn btn-primary"
-                disabled={room.status !== "waiting"}
+                disabled={room.status !== "waiting" || savingQuestion}
                 onClick={addQuestion}
               >
-                <FiPlus />
-                Save question
+                {savingQuestion ? "Saving..." : "Save question"}
               </button>
             </div>
 
@@ -625,6 +689,135 @@ function RoomAdmin() {
                 )}
               </div>
             ))}
+          </div>
+        )}
+
+        {tab === "answers" && (
+          <div>
+            <p className="muted" style={{ marginBottom: 16 }}>
+              Each participant's choice per question, compared with the
+              correct answer.
+            </p>
+
+            {room.status === "waiting" ? (
+              <div className="card empty-state">
+                <p>
+                  Answers appear once participants submit after the quiz
+                  starts.
+                </p>
+              </div>
+            ) : activeParticipants.filter((p) => p.submitted).length ===
+              0 ? (
+              <div className="card empty-state">
+                <p>No submissions yet.</p>
+              </div>
+            ) : (
+              activeParticipants
+                .filter((p) => p.submitted)
+                .map((p) => {
+                  const correctCount = room.questions.reduce(
+                    (count, q, index) => {
+                      const given = String(
+                        p.answers?.[index] ?? ""
+                      ).trim();
+
+                      return (
+                        count +
+                        (given !== "" &&
+                        given === String(q.answer).trim()
+                          ? 1
+                          : 0)
+                      );
+                    },
+                    0
+                  );
+
+                  return (
+                    <div
+                      className="card"
+                      style={{ marginBottom: 16 }}
+                      key={p.userId}
+                    >
+                      <div
+                        className="row between"
+                        style={{ justifyContent: "space-between", marginBottom: 14 }}
+                      >
+                        <span className="p-name">
+                          <span className="p-avatar">
+                            {p.name.charAt(0).toUpperCase()}
+                          </span>
+
+                          <strong>{p.name}</strong>
+                        </span>
+
+                        <span className="badge badge-accent">
+                          {correctCount}/{room.questions.length} correct
+                        </span>
+                      </div>
+
+                      <div className="table-wrap" style={{ boxShadow: "none" }}>
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th style={{ width: 44 }}>#</th>
+                              <th>Question</th>
+                              <th>Participant's answer</th>
+                              <th>Correct answer</th>
+                            </tr>
+                          </thead>
+
+                          <tbody>
+                            {room.questions.map((q, index) => {
+                              const given = String(
+                                p.answers?.[index] ?? ""
+                              ).trim();
+
+                              const answered = given !== "";
+
+                              const isCorrect =
+                                answered &&
+                                given ===
+                                  String(q.answer).trim();
+
+                              return (
+                                <tr key={index}>
+                                  <td className="num">{index + 1}</td>
+
+                                  <td>{q.question}</td>
+
+                                  <td>
+                                    {answered ? (
+                                      <span
+                                        className={`badge ${
+                                          isCorrect
+                                            ? "badge-success"
+                                            : "badge-danger"
+                                        }`}
+                                      >
+                                        {given}
+                                      </span>
+                                    ) : (
+                                      <span className="badge badge-neutral">
+                                        Not answered
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  <td>
+                                    <span className="badge badge-success">
+                                      {q.answer}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })
+            )}
           </div>
         )}
 
@@ -677,7 +870,9 @@ function RoomAdmin() {
           </div>
         )}
 
-        {tab === "chat" && <RoomChat roomId={room.roomId} />}
+        {tab === "chat" && (
+          <RoomChat roomId={room.roomId} live={room.status !== "ended"} />
+        )}
 
         {tab === "settings" && (
           <div>

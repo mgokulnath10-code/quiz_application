@@ -34,7 +34,7 @@ function AdminStats() {
           console.error(error);
         }
       });
-  }, []);
+  }, [navigate]);
 
   if (!stats) {
     return (

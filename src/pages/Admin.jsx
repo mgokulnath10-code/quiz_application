@@ -37,10 +37,6 @@ function Admin() {
   const [editingId, setEditingId] = useState(null);
   const [editQuestion, setEditQuestion] = useState("");
 
-  useEffect(() => {
-    fetchQuestions();
-  }, []);
-
   const fetchQuestions = async () => {
     try {
       const res = await axios.get(
@@ -61,6 +57,11 @@ function Admin() {
 
     navigate("/admin-login");
   };
+
+  useEffect(() => {
+    fetchQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const saveQuestion = async () => {
     if (!question || !option1 || !option2 || !option3 || !option4 || !answer || !topic) {

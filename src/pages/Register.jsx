@@ -29,7 +29,12 @@ function Register() {
       ? "Your email isn't verified yet. Enter the code we just sent you."
       : ""
   );
-  const [devCode, setDevCode] = useState(location.state?.devCode || "");
+  const [error, setError] = useState("");
+
+  // Only ever populated when the server explicitly enables
+  // dev OTP (ALLOW_DEV_OTP=true and not production).
+
+  const [devCode, setDevCode] = useState("");
 
   const handleRegister = async () => {
     if (!name || !email || !password) {
@@ -39,6 +44,7 @@ function Register() {
 
     setLoading(true);
     setNotice("");
+    setError("");
 
     try {
       const res = await axios.post(`${API}/api/register`, {
@@ -54,10 +60,10 @@ function Register() {
 
         setDevCode(res.data.devCode || "");
       }
-    } catch (error) {
-      alert(
-        error.response?.data?.message ||
-          "Registration failed."
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+          "Registration failed. Please try again."
       );
     } finally {
       setLoading(false);
@@ -71,6 +77,7 @@ function Register() {
     }
 
     setLoading(true);
+    setError("");
 
     try {
       await axios.post(`${API}/api/verify-otp`, {
@@ -82,10 +89,10 @@ function Register() {
       alert("Email verified. Please log in.");
 
       navigate("/login");
-    } catch (error) {
-      alert(
-        error.response?.data?.message ||
-          "Verification failed."
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+          "Verification failed. Please try again."
       );
     } finally {
       setLoading(false);
@@ -116,6 +123,20 @@ function Register() {
             <p className="auth-subtitle">
               Join BrainRace and start competing today.
             </p>
+
+            {error && (
+              <p
+                className="badge badge-danger"
+                style={{
+                  display: "block",
+                  whiteSpace: "normal",
+                  marginBottom: 14,
+                  padding: "6px 12px",
+                }}
+              >
+                {error}
+              </p>
+            )}
 
             <form
               onSubmit={(e) => {
@@ -206,6 +227,20 @@ function Register() {
               >
                 Email service not configured — dev code:{" "}
                 <strong>{devCode}</strong>
+              </p>
+            )}
+
+            {error && (
+              <p
+                className="badge badge-danger"
+                style={{
+                  display: "block",
+                  whiteSpace: "normal",
+                  marginBottom: 14,
+                  padding: "6px 12px",
+                }}
+              >
+                {error}
               </p>
             )}
 

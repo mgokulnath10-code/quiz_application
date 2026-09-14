@@ -135,6 +135,10 @@ const roomSchema = new mongoose.Schema({
   },
 });
 
+// Speed up lobby lookups (mine / joined)
+roomSchema.index({ "admin.userId": 1 });
+roomSchema.index({ "participants.userId": 1 });
+
 module.exports = mongoose.model(
   "Room",
   roomSchema

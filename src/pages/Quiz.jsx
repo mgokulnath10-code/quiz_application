@@ -99,11 +99,6 @@ function Quiz() {
   const user =
     JSON.parse(localStorage.getItem("user")) || { name: "Guest" };
 
-  useEffect(() => {
-    fetchQuestions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const fetchQuestions = async () => {
     try {
       const res = await axios.get(`${API}/api/questions`, {
@@ -129,6 +124,11 @@ function Quiz() {
       console.error(error);
     }
   };
+
+  useEffect(() => {
+    fetchQuestions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const logout = () => {
     localStorage.removeItem("user");
@@ -186,6 +186,10 @@ function Quiz() {
     }, 1000);
 
     return () => clearTimeout(timer);
+    // Timer reads the current question and score on
+    // each tick by design; listing handleNext would
+    // restart the interval every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeLeft, showResult, questions]);
 
   if (questions.length === 0) {

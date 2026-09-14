@@ -16,10 +16,6 @@ function Profile() {
       email: "",
     };
 
-  useEffect(() => {
-    fetchResults();
-  }, []);
-
   const fetchResults = async () => {
     try {
       const res = await axios.get(`${API}/api/results`);
@@ -33,6 +29,11 @@ function Profile() {
       console.error(error);
     }
   };
+
+  useEffect(() => {
+    fetchResults();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const totalQuizzes = results.length;
 

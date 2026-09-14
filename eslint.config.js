@@ -17,5 +17,11 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // This app fetches data on mount inside useEffect
+      // (the pattern shown in the React docs); the new
+      // rule flags every such call as a cascading render.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

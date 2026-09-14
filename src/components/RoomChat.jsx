@@ -10,13 +10,14 @@ const getAuth = () => ({
   },
 });
 
-function RoomChat({ roomId }) {
+function RoomChat({ roomId, live = true }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
 
   const chatBoxRef = useRef(null);
   const seenIdsRef = useRef(new Set());
+  const fetchingRef = useRef(false);
 
   const mergeMessages = (incoming) => {
     const fresh = incoming.filter(
@@ -45,6 +46,12 @@ function RoomChat({ roomId }) {
     let cancelled = false;
 
     const fetchChat = async () => {
+      // Skip a tick instead of stacking requests.
+
+      if (fetchingRef.current) return;
+
+      fetchingRef.current = true;
+
       try {
         const res = await axios.get(
           `${API}/api/rooms/${roomId}/chat?after=0`,
@@ -56,18 +63,36 @@ function RoomChat({ roomId }) {
         }
       } catch (error) {
         console.error(error);
+      } finally {
+        fetchingRef.current = false;
       }
     };
 
     fetchChat();
 
-    const timer = setInterval(fetchChat, 2000);
+    const tick = () => {
+      if (document.hidden) return;
+      if (!live) return;
+
+      fetchChat();
+    };
+
+    const timer = setInterval(tick, 2000);
+
+    const onVisible = () => {
+      if (!document.hidden && live) {
+        fetchChat();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       cancelled = true;
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [roomId]);
+  }, [roomId, live]);
 
   useEffect(() => {
     const box = chatBoxRef.current;

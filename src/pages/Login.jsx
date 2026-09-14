@@ -39,11 +39,19 @@ function Login() {
     microsoft: false,
   });
 
+  // null = still loading; true = the providers endpoint failed.
+  const [providersError, setProvidersError] = useState(false);
+
   useEffect(() => {
     axios
       .get(`${API}/api/auth/providers`)
-      .then((res) => setSocial(res.data))
-      .catch(() => {});
+      .then((res) => {
+        setSocial({
+          google: !!res.data?.google,
+          microsoft: !!res.data?.microsoft,
+        });
+      })
+      .catch(() => setProvidersError(true));
   }, []);
 
   const handleLogin = async () => {
@@ -76,7 +84,6 @@ function Login() {
           state: {
             verifyEmail: true,
             email,
-            devCode: data.devCode,
           },
         });
 
@@ -163,14 +170,27 @@ function Login() {
           </button>
         </div>
 
-        {(social.google || social.microsoft) && (
-          <>
-            <div className="auth-divider">
-              or continue with
-            </div>
+        <div className="auth-divider">
+          or continue with
+        </div>
 
-            <div className="auth-social">
-              {social.google && (
+        <div className="auth-social">
+          {providersError ? (
+            <p
+              className="badge badge-warning"
+              style={{
+                display: "block",
+                whiteSpace: "normal",
+                padding: "6px 12px",
+                textAlign: "center",
+              }}
+            >
+              Social sign-in is unavailable: the server could not report
+              its OAuth configuration.
+            </p>
+          ) : (
+            <>
+              {social.google ? (
                 <a
                   href={`${API}/api/auth/google`}
                   className="btn btn-secondary btn-block"
@@ -178,9 +198,22 @@ function Login() {
                   <GoogleIcon />
                   Continue with Google
                 </a>
+              ) : (
+                <p
+                  className="badge badge-warning"
+                  style={{
+                    display: "block",
+                    whiteSpace: "normal",
+                    padding: "6px 12px",
+                    textAlign: "center",
+                  }}
+                >
+                  Google sign-in is unavailable: server OAuth is not
+                  configured.
+                </p>
               )}
 
-              {social.microsoft && (
+              {social.microsoft ? (
                 <a
                   href={`${API}/api/auth/microsoft`}
                   className="btn btn-secondary btn-block"
@@ -188,10 +221,23 @@ function Login() {
                   <MicrosoftIcon />
                   Continue with Microsoft
                 </a>
+              ) : (
+                <p
+                  className="badge badge-warning"
+                  style={{
+                    display: "block",
+                    whiteSpace: "normal",
+                    padding: "6px 12px",
+                    textAlign: "center",
+                  }}
+                >
+                  Microsoft sign-in is unavailable: server OAuth is not
+                  configured.
+                </p>
               )}
-            </div>
-          </>
-        )}
+            </>
+          )}
+        </div>
 
         <p className="auth-footer">
           Don't have an account?{" "}

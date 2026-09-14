@@ -47,25 +47,30 @@ function RoomQuiz() {
 
   const terminatedRef = useRef(false);
 
+  // Polling + advance guards: never stack requests, never
+  // advance/submit the same question twice, stop on "ended".
+
+  const fetchingRef = useRef(false);
+  const roomStatusRef = useRef("waiting");
+  const advancedIndexRef = useRef(-1);
+  const submittingRef = useRef(false);
+
   const user = JSON.parse(localStorage.getItem("user")) || { name: "Guest" };
 
   const roomSettings = room?.settings || {};
 
   const questionTimer = roomSettings.questionTimer || 30;
 
-  useEffect(() => {
-    fetchRoom();
-
-    const timer = setInterval(fetchRoom, 3000);
-
-    return () => clearInterval(timer);
-  }, [roomId]);
-
   const fetchRoom = async () => {
+    if (fetchingRef.current) return;
+
+    fetchingRef.current = true;
+
     try {
       const res = await axios.get(`${API}/api/rooms/${roomId}`, getAuth());
 
       setRoom(res.data);
+      roomStatusRef.current = res.data.status;
       setNeedsJoin(false);
     } catch (error) {
       if (error.response?.status === 403) {
@@ -75,8 +80,37 @@ function RoomQuiz() {
       }
 
       console.error(error);
+    } finally {
+      fetchingRef.current = false;
     }
   };
+
+  useEffect(() => {
+    fetchRoom();
+
+    const tick = () => {
+      if (document.hidden) return;
+      if (roomStatusRef.current === "ended") return;
+
+      fetchRoom();
+    };
+
+    const timer = setInterval(tick, 3000);
+
+    const onVisible = () => {
+      if (!document.hidden && roomStatusRef.current !== "ended") {
+        fetchRoom();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
 
   const joinRoom = async () => {
     try {
@@ -103,8 +137,12 @@ function RoomQuiz() {
   };
 
   const submitScore = async (finalScore, finalAnswers) => {
-    if (submitting) return;
+    // Ref guard: the timer auto-advance and a manual click
+    // (or a strict-mode terminate) can fire in the same tick.
 
+    if (submittingRef.current) return;
+
+    submittingRef.current = true;
     setSubmitting(true);
 
     try {
@@ -122,6 +160,7 @@ function RoomQuiz() {
     } catch (error) {
       alert(error.response?.data?.message || "Could not submit score");
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
@@ -130,6 +169,13 @@ function RoomQuiz() {
     String(selected).trim() === String(question.answer).trim();
 
   const handleNext = () => {
+    // Guard against the 0s auto-advance and the manual
+    // "Next" both advancing the same question.
+
+    if (advancedIndexRef.current === currentIndex) return;
+
+    advancedIndexRef.current = currentIndex;
+
     let newScore = score;
 
     const isCorrect = isCorrectAnswer(
@@ -492,7 +538,7 @@ function RoomQuiz() {
 
             <button
               className="btn btn-primary"
-              disabled={!selectedAnswer}
+              disabled={!selectedAnswer || submitting}
               onClick={handleNext}
             >
               {currentIndex === room.questions.length - 1
@@ -718,7 +764,7 @@ function RoomQuiz() {
 
           <h2 className="room-section-title">Chat</h2>
 
-          <RoomChat roomId={room.roomId} />
+          <RoomChat roomId={room.roomId} live={room.status !== "ended"} />
 
         </div>
       </div>
@@ -831,7 +877,7 @@ function RoomQuiz() {
 
         <h2 className="room-section-title">Chat</h2>
 
-        <RoomChat roomId={room.roomId} />
+        <RoomChat roomId={room.roomId} live={room.status !== "ended"} />
 
       </div>
     </div>
