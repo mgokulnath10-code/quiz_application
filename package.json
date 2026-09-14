@@ -12,6 +12,7 @@
     "selfcheck:auth": "node scripts/selfcheckAuth.mjs",
     "selfcheck:oauth": "node scripts/selfcheckOauth.mjs",
     "selfcheck:admin": "node scripts/selfcheckAdmin.mjs",
+    "selfcheck:db": "node scripts/selfcheckDb.mjs",
     "check:responsive": "node scripts/checkResponsive.mjs"
   },
   "dependencies": {

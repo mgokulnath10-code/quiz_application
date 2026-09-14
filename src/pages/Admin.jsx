@@ -26,6 +26,7 @@ import {
   handleAdminError,
   clearAdminSession,
 } from "../utils/adminAuth";
+import { messageForError } from "../utils/apiError";
 import useSlowFlag from "../utils/useSlowFlag";
 import "../styles/Admin.css";
 
@@ -146,8 +147,7 @@ function Admin() {
       console.error(error);
 
       setBankError(
-        error.response?.data?.message ||
-          "The question bank could not be loaded."
+        messageForError(error, "The question bank could not be loaded.")
       );
 
       setBankState("error");
@@ -258,7 +258,7 @@ function Admin() {
         return;
       }
 
-      setAddError(data?.message || "Could not save the question.");
+      setAddError(messageForError(error, "Could not save the question."));
     } finally {
       setAddBusy(false);
     }
@@ -280,7 +280,7 @@ function Admin() {
       if (handleAdminError(error, navigate)) return;
 
       setAddError(
-        error.response?.data?.message || "Could not save the question."
+        messageForError(error, "Could not save the question.")
       );
     } finally {
       setAddBusy(false);
@@ -321,7 +321,7 @@ function Admin() {
       if (handleAdminError(error, navigate)) return;
 
       setRowError(
-        error.response?.data?.message || "Could not update the question."
+        messageForError(error, "Could not update the question.")
       );
     } finally {
       setEditBusy(false);
@@ -343,7 +343,7 @@ function Admin() {
       if (handleAdminError(error, navigate)) return;
 
       setRowError(
-        error.response?.data?.message || "Could not delete the question."
+        messageForError(error, "Could not delete the question.")
       );
     }
   };
@@ -462,8 +462,10 @@ function Admin() {
       if (handleAdminError(error, navigate)) return;
 
       setImportError(
-        error.response?.data?.message ||
+        messageForError(
+          error,
           "Could not process the CSV. Check the format and try again."
+        )
       );
 
       setImportState(confirm ? "preview" : "idle");

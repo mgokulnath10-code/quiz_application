@@ -11,7 +11,11 @@ import {
   FiXCircle,
   FiHelpCircle,
   FiSlash,
+  FiDatabase,
+  FiRefreshCw,
 } from "react-icons/fi";
+import { messageForError } from "../utils/apiError";
+import useSlowFlag from "../utils/useSlowFlag";
 import "../styles/Auth.css";
 
 import API from "../config/api";
@@ -74,6 +78,26 @@ const viewFor = (result) => {
   return { ...view, reason: result.supportReason };
 };
 
+// The database check has its own vocabulary: a reachable database, one that
+// is still connecting, or one the server genuinely cannot reach.
+const DB_VERDICT_VIEW = {
+  healthy: {
+    label: "Reachable",
+    icon: FiCheckCircle,
+    tone: "success",
+  },
+  connecting: {
+    label: "Connecting",
+    icon: FiRefreshCw,
+    tone: "warning",
+  },
+  unreachable: {
+    label: "Unreachable",
+    icon: FiXCircle,
+    tone: "danger",
+  },
+};
+
 function AdminLogin() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -89,6 +113,13 @@ function AdminLogin() {
   const [diagnosingProvider, setDiagnosingProvider] = useState("");
   const [diagnosis, setDiagnosis] = useState([]);
   const [diagnoseError, setDiagnoseError] = useState("");
+
+  // Database reachability. Separate again: it makes the server ping its own
+  // database, so it runs only when the operator asks.
+  const [dbChecking, setDbChecking] = useState(false);
+  const [dbResult, setDbResult] = useState(null);
+  const [dbError, setDbError] = useState("");
+  const dbSlow = useSlowFlag(dbChecking, 15000);
 
   const navigate = useNavigate();
 
@@ -165,6 +196,36 @@ function AdminLogin() {
       setDiagnosing(false);
     }
   };
+
+  const checkDatabase = async () => {
+    setDbChecking(true);
+    setDbError("");
+    setDbResult(null);
+
+    try {
+      const res = await axios.get(`${API}/api/health/db`);
+
+      setDbResult(res.data || null);
+    } catch (err) {
+      setDbError(
+        messageForError(
+          err,
+          "The database check could not be completed. The server may be " +
+            "offline."
+        )
+      );
+    } finally {
+      setDbChecking(false);
+    }
+  };
+
+  // Rendered only alongside a result; a stable icon keeps the badge from
+  // flickering between renders.
+  const dbView = dbResult
+    ? DB_VERDICT_VIEW[dbResult.verdict] || DB_VERDICT_VIEW.unreachable
+    : DB_VERDICT_VIEW.unreachable;
+
+  const DbVerdictIcon = dbView.icon;
 
   const handleLogin = async () => {
     if (!username || !password) {
@@ -330,7 +391,112 @@ function AdminLogin() {
                   {config.githubConfigured ? "configured" : "not configured"}
                 </li>
                 <li>Environment: {config.env || "unknown"}</li>
+                <li>
+                  Database:{" "}
+                  {config.mongoConnected
+                    ? "connected"
+                    : `not connected (${
+                        config.mongoReadyStateLabel || "unknown"
+                      })`}
+                </li>
               </ul>
+
+              <div className="diagnostics-check">
+                <p className="diagnostics-help">
+                  Every data page reads from the database. Check it here to
+                  see whether this server can actually reach it. The reply
+                  shows only the host names — never the username, password or
+                  full connection string.
+                </p>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={checkDatabase}
+                  disabled={dbChecking}
+                  aria-busy={dbChecking}
+                >
+                  <FiDatabase aria-hidden="true" />
+                  {dbChecking ? "Checking database..." : "Check database"}
+                </button>
+
+                <div
+                  className="diagnostics-results"
+                  aria-live="polite"
+                  role="status"
+                >
+                  {dbChecking && (
+                    <>
+                      <p className="muted">Pinging the database...</p>
+
+                      {dbSlow && (
+                        <p className="muted">
+                          This is taking longer than expected. A database that
+                          cannot be reached is reported after a short timeout.
+                        </p>
+                      )}
+                    </>
+                  )}
+
+                  {!dbChecking && dbError && (
+                    <p className="badge badge-danger diagnostics-warning">
+                      <FiXCircle aria-hidden="true" />
+                      {dbError}
+                    </p>
+                  )}
+
+                  {!dbChecking && !dbError && !dbResult && (
+                    <p className="muted">
+                      Not run yet. Nothing is reported about the database until
+                      the check is run.
+                    </p>
+                  )}
+
+                  {!dbChecking && dbResult && (
+                    <div className="diagnostics-result">
+                      <div className="diagnostics-result-head">
+                        <span className="diagnostics-provider-name">
+                          Database
+                        </span>
+
+                        <span className={`badge badge-${dbView.tone}`}>
+                          <DbVerdictIcon aria-hidden="true" />
+                          {dbView.label}
+                        </span>
+                      </div>
+
+                      <ul className="diagnostics-list">
+                        <li>
+                          Connection state:{" "}
+                          {dbResult.readyStateLabel || "unknown"}
+                          {dbResult.connected ? " (ready)" : ""}
+                        </li>
+
+                        <li>
+                          Target:{" "}
+                          <code>{dbResult.target || "(not set)"}</code>
+                        </li>
+
+                        <li>
+                          Database name: {dbResult.database || "unknown"}
+                        </li>
+
+                        <li>
+                          Ping:{" "}
+                          {dbResult.pingMs === null ||
+                          dbResult.pingMs === undefined
+                            ? "—"
+                            : `${dbResult.pingMs} ms`}
+                        </li>
+                      </ul>
+
+                      <p className="diagnostics-result-message">
+                        {dbResult.message}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {config.oauthRedirectUris && (
                 <>

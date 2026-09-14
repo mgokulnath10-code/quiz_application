@@ -15,6 +15,7 @@ import {
   getAdminAuth,
   handleAdminError,
 } from "../utils/adminAuth";
+import { messageForError } from "../utils/apiError";
 import useSlowFlag from "../utils/useSlowFlag";
 import "../styles/Admin.css";
 
@@ -79,8 +80,7 @@ function AdminUsers() {
       console.error(error);
 
       setErrorMessage(
-        error.response?.data?.message ||
-          "The user list could not be loaded."
+        messageForError(error, "The user list could not be loaded.")
       );
 
       setState("error");

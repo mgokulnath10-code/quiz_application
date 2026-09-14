@@ -2,6 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { FiZap, FiMail } from "react-icons/fi";
+import { messageForError } from "../utils/apiError";
 import "../styles/Auth.css";
 
 import API from "../config/api";
@@ -62,8 +63,7 @@ function Register() {
       }
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Registration failed. Please try again."
+        messageForError(err, "Registration failed. Please try again.")
       );
     } finally {
       setLoading(false);
@@ -91,8 +91,7 @@ function Register() {
       navigate("/login");
     } catch (err) {
       setError(
-        err.response?.data?.message ||
-          "Verification failed. Please try again."
+        messageForError(err, "Verification failed. Please try again.")
       );
     } finally {
       setLoading(false);

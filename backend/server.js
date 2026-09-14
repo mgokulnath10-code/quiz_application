@@ -7,6 +7,18 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 
+const connectDB = require("./config/db");
+const {
+  getLastConnectionError,
+} = require("./config/db");
+const {
+  describeMongoTarget,
+  sanitizeDbError,
+  readyStateLabel,
+} = require("./utils/dbDiagnostics");
+const { createDbGuard } = require("./utils/dbGuard");
+const { createTtlCache } = require("./utils/ttlCache");
+
 const app = express();
 
 // Render (and most PaaS hosts) terminate TLS at a proxy,
@@ -16,6 +28,17 @@ app.set("trust proxy", 1);
 app.use(cors());
 // Raised from the 100kb default so an admin can paste / upload a CSV batch.
 app.use(express.json({ limit: "1mb" }));
+
+// Fail fast when the database cannot be reached. Registered before every
+// route so a database-backed request answers 503 DB_UNAVAILABLE immediately
+// instead of buffering on the driver. Routes that never touch the database
+// (health, admin login, the OAuth handshake) are deliberately exempt — they
+// are how an operator sees that the database is down. See utils/dbGuard.js.
+app.use(
+  createDbGuard({
+    isConnected: () => mongoose.connection.readyState === 1,
+  })
+);
 
 const Question = require("./models/Question");
 const Result = require("./models/Result");
@@ -90,106 +113,117 @@ const userOrAdminAuth = (req, res, next) => {
   return userAuth(req, res, next);
 };
 
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(async () => {
-    console.log("MongoDB Connected");
+// Runs once, after the first successful connection. Kept separate from the
+// connection itself so a database that is unreachable at boot does not stop
+// the HTTP server from listening — connectDB retries and calls this when the
+// database finally answers.
+const bootstrapDatabase = async () => {
+  // Existing accounts predate OTP verification —
+  // treat them as already verified.
 
-    // Existing accounts predate OTP verification —
-    // treat them as already verified.
+  await User.updateMany(
+    { verified: { $exists: false } },
+    { $set: { verified: true } }
+  );
 
-    await User.updateMany(
-      { verified: { $exists: false } },
-      { $set: { verified: true } }
+  // Seed the starter question bank once.
+
+  const count = await Question.countDocuments();
+
+  if (count === 0) {
+    await Question.insertMany(questionBank);
+
+    console.log(
+      `Seeded ${questionBank.length} starter questions`
     );
+  }
 
-    // Seed the starter question bank once.
-
-    const count = await Question.countDocuments();
-
-    if (count === 0) {
-      await Question.insertMany(questionBank);
-
-      console.log(
-        `Seeded ${questionBank.length} starter questions`
+  if (!smtpConfigured()) {
+    if (devOtpAllowed()) {
+      console.warn(
+        "WARNING: SMTP is not configured. ALLOW_DEV_OTP=true " +
+          "and NODE_ENV is not production, so OTP codes will be " +
+          "exposed through the API for development only."
+      );
+    } else {
+      console.warn(
+        "WARNING: SMTP is not configured and dev OTP is off — " +
+          "users cannot receive OTP emails. Set SMTP_HOST / " +
+          "SMTP_PORT / SMTP_USER / SMTP_PASS."
       );
     }
+  }
 
-    if (!smtpConfigured()) {
-      if (devOtpAllowed()) {
-        console.warn(
-          "WARNING: SMTP is not configured. ALLOW_DEV_OTP=true " +
-            "and NODE_ENV is not production, so OTP codes will be " +
-            "exposed through the API for development only."
-        );
-      } else {
-        console.warn(
-          "WARNING: SMTP is not configured and dev OTP is off — " +
-            "users cannot receive OTP emails. Set SMTP_HOST / " +
-            "SMTP_PORT / SMTP_USER / SMTP_PASS."
-        );
-      }
-    }
+  // One-time hygiene: strip stray whitespace from
+  // stored questions so answer comparison is exact.
 
-    // One-time hygiene: strip stray whitespace from
-    // stored questions so answer comparison is exact.
-
-    await Question.updateMany(
-      {},
-      [
-        {
-          $set: {
-            question: { $trim: { input: "$question" } },
-            answer: { $trim: { input: "$answer" } },
-            options: {
-              $map: {
-                input: "$options",
-                as: "option",
-                in: { $trim: { input: "$$option" } },
-              },
+  await Question.updateMany(
+    {},
+    [
+      {
+        $set: {
+          question: { $trim: { input: "$question" } },
+          answer: { $trim: { input: "$answer" } },
+          options: {
+            $map: {
+              input: "$options",
+              as: "option",
+              in: { $trim: { input: "$$option" } },
             },
           },
         },
-      ],
-      { updatePipeline: true }
-    );
+      },
+    ],
+    { updatePipeline: true }
+  );
 
-    await Room.updateMany(
-      {},
-      [
-        {
-          $set: {
-            questions: {
-              $map: {
-                input: "$questions",
-                as: "q",
-                in: {
-                  _id: "$$q._id",
-                  question: {
-                    $trim: { input: "$$q.question" },
-                  },
-                  answer: {
-                    $trim: { input: "$$q.answer" },
-                  },
-                  options: {
-                    $map: {
-                      input: "$$q.options",
-                      as: "option",
-                      in: { $trim: { input: "$$option" } },
-                    },
+  await Room.updateMany(
+    {},
+    [
+      {
+        $set: {
+          questions: {
+            $map: {
+              input: "$questions",
+              as: "q",
+              in: {
+                _id: "$$q._id",
+                question: {
+                  $trim: { input: "$$q.question" },
+                },
+                answer: {
+                  $trim: { input: "$$q.answer" },
+                },
+                options: {
+                  $map: {
+                    input: "$$q.options",
+                    as: "option",
+                    in: { $trim: { input: "$$option" } },
                   },
                 },
               },
             },
           },
         },
-      ],
-      { updatePipeline: true }
-    );
-  })
-  .catch((err) => {
-    console.log(err);
-  });
+      },
+    ],
+    { updatePipeline: true }
+  );
+};
+
+connectDB({ onConnected: bootstrapDatabase });
+
+// Short-lived read cache for the two read-only endpoints the quiz setup
+// wizard hits hardest. A 30s TTL removes repeated identical queries; every
+// question-bank mutation clears it explicitly so an edit is visible at once.
+const QUESTION_READ_CACHE_TTL_MS = 30000;
+
+const questionReadCache = createTtlCache({
+  ttlMs: QUESTION_READ_CACHE_TTL_MS,
+  maxEntries: 60,
+});
+
+const invalidateQuestionReadCache = () => questionReadCache.clear();
 
 const roomRoutes = require("./routes/roomRoutes");
 
@@ -736,9 +770,127 @@ app.get("/api/health/config", (req, res) => {
       process.env.GITHUB_CLIENT_SECRET
     ),
     mongoConnected: mongoose.connection.readyState === 1,
+    // The raw ready-state so the client can tell "connecting" and
+    // "disconnected" apart, not just connected / not connected.
+    mongoReadyState: mongoose.connection.readyState,
+    mongoReadyStateLabel: readyStateLabel(
+      mongoose.connection.readyState
+    ),
     env: process.env.NODE_ENV || "development",
     devOtpAllowed: devOtpAllowed(),
     oauthRedirectUris: oauth.redirectUris,
+  });
+});
+
+/* =====================
+   HEALTH / DB
+   A real ping, reported without any credential.
+
+   This is the endpoint an operator reaches for when the app "feels slow":
+   the connection string is never echoed, only its host names, and the ping
+   time plus verdict say whether the server can actually reach its database.
+===================== */
+
+const DB_PING_TIMEOUT_MS = 2000;
+
+// Resolves with the promise's value, or rejects if it has not settled in
+// time. The late rejection is swallowed so a timeout can never surface as an
+// unhandled rejection.
+const withTimeout = (promise, ms) => {
+  promise.catch(() => {});
+
+  let timer;
+
+  const timeout = new Promise((resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Timed out after ${ms}ms`)),
+      ms
+    );
+  });
+
+  return Promise.race([promise, timeout]).finally(() =>
+    clearTimeout(timer)
+  );
+};
+
+const dbUnreachableMessage = (detail) => {
+  const base =
+    "The server cannot reach its database. This is a server configuration " +
+    "problem, not a problem with the caller. Check MONGO_URI on the host, " +
+    "and the MongoDB Atlas network access allow-list so this server's " +
+    "outbound IP is permitted.";
+
+  return detail ? `${base} Detail: ${detail}` : base;
+};
+
+app.get("/api/health/db", async (req, res) => {
+  const readyState = mongoose.connection.readyState;
+  const parsed = describeMongoTarget(process.env.MONGO_URI);
+
+  const base = {
+    readyState,
+    readyStateLabel: readyStateLabel(readyState),
+    connected: readyState === 1,
+    // Masked: scheme + host names only. Never the username or password.
+    target: parsed.target,
+    hosts: parsed.hosts,
+    database: mongoose.connection.name || parsed.database || null,
+    credentialsConfigured: parsed.hadCredentials,
+    checkedAt: new Date().toISOString(),
+    pingMs: null,
+    ok: false,
+    verdict: "unreachable",
+    message: dbUnreachableMessage(
+      sanitizeDbError(getLastConnectionError(), {
+        uri: process.env.MONGO_URI,
+      })
+    ),
+  };
+
+  if (readyState !== 1 || !mongoose.connection.db) {
+    return res.status(200).json({
+      ...base,
+      verdict: readyState === 2 ? "connecting" : "unreachable",
+      message:
+        readyState === 2
+          ? "The server is still connecting to its database. Retry in a " +
+            "moment; no restart is needed."
+          : base.message,
+    });
+  }
+
+  const started = Date.now();
+
+  let pingError = null;
+
+  try {
+    await withTimeout(
+      mongoose.connection.db.admin().command({ ping: 1 }),
+      DB_PING_TIMEOUT_MS
+    );
+  } catch (error) {
+    pingError = error;
+  }
+
+  const pingMs = Date.now() - started;
+
+  if (pingError) {
+    return res.status(200).json({
+      ...base,
+      pingMs,
+      verdict: "unreachable",
+      message: dbUnreachableMessage(
+        sanitizeDbError(pingError, { uri: process.env.MONGO_URI })
+      ),
+    });
+  }
+
+  return res.status(200).json({
+    ...base,
+    pingMs,
+    ok: true,
+    verdict: "healthy",
+    message: `The server reached its database with a ping in ${pingMs} ms.`,
   });
 });
 
@@ -862,6 +1014,9 @@ app.post("/api/questions", adminAuth, async (req, res) => {
     const question = new Question(candidate);
 
     await question.save();
+
+    // The bank changed, so the cached meta/pool reads are stale.
+    invalidateQuestionReadCache();
 
     await recordAudit({
       action: AUDIT_ACTIONS.QUESTION_CREATE,
@@ -1035,6 +1190,14 @@ app.get("/api/questions", async (req, res) => {
 // for the quiz setup wizard.
 
 app.get("/api/questions/meta", async (req, res) => {
+  const cacheKey = "questions:meta";
+
+  const cached = questionReadCache.get(cacheKey);
+
+  if (cached !== undefined) {
+    return res.json(cached);
+  }
+
   try {
     const questions = await Question.find();
 
@@ -1059,6 +1222,8 @@ app.get("/api/questions/meta", async (req, res) => {
       category: entry.category,
       difficulties: [...entry.difficulties],
     }));
+
+    questionReadCache.set(cacheKey, meta);
 
     res.json(meta);
   } catch (error) {
@@ -1089,6 +1254,16 @@ app.get("/api/questions/pool", async (req, res) => {
       });
     }
 
+    const cacheKey = `questions:pool:${filter.topic || ""}:${
+      filter.category || ""
+    }`;
+
+    const cached = questionReadCache.get(cacheKey);
+
+    if (cached !== undefined) {
+      return res.json(cached);
+    }
+
     const questions = await Question.find(filter);
 
     const byDifficulty = { easy: [], medium: [], hard: [] };
@@ -1104,7 +1279,7 @@ app.get("/api/questions/pool", async (req, res) => {
       counts[question.difficulty] += 1;
     });
 
-    res.json({
+    const payload = {
       topic: filter.topic || null,
       category: filter.category || null,
       total: questions.length,
@@ -1113,7 +1288,11 @@ app.get("/api/questions/pool", async (req, res) => {
       ),
       counts,
       byDifficulty,
-    });
+    };
+
+    questionReadCache.set(cacheKey, payload);
+
+    res.json(payload);
   } catch (error) {
     console.log(error);
 
@@ -1142,6 +1321,8 @@ app.put("/api/questions/:id", adminAuth, async (req, res) => {
       });
     }
 
+    invalidateQuestionReadCache();
+
     await recordAudit({
       action: AUDIT_ACTIONS.QUESTION_UPDATE,
       summary: `Updated question “${updatedQuestion.question}”`,
@@ -1163,6 +1344,8 @@ app.delete("/api/questions/:id", adminAuth, async (req, res) => {
     const removed = await Question.findByIdAndDelete(
       req.params.id
     );
+
+    invalidateQuestionReadCache();
 
     await recordAudit({
       action: AUDIT_ACTIONS.QUESTION_DELETE,
@@ -1365,6 +1548,9 @@ app.post("/api/admin/questions/import", adminAuth, async (req, res) => {
 
     const skipped = preview.duplicates.length;
     const rejected = preview.invalid.length;
+
+    // Only a confirmed import writes, so only that invalidates the cache.
+    if (added.length > 0) invalidateQuestionReadCache();
 
     await recordAudit({
       action: AUDIT_ACTIONS.QUESTIONS_IMPORT,

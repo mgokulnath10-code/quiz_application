@@ -18,6 +18,7 @@ import {
   describeNegativeMarking,
   describeExamDuration,
 } from "../utils/quizEngine";
+import { messageForError } from "../utils/apiError";
 import useSlowFlag from "../utils/useSlowFlag";
 import "../styles/QuizSetup.css";
 
@@ -83,6 +84,7 @@ function QuizSetup() {
 
   const [meta, setMeta] = useState([]);
   const [metaState, setMetaState] = useState("loading");
+  const [metaError, setMetaError] = useState("");
   const metaSlow = useSlowFlag(metaState === "loading");
 
   const [difficulty, setDifficulty] = useState("");
@@ -91,6 +93,7 @@ function QuizSetup() {
 
   const [pool, setPool] = useState(null);
   const [poolState, setPoolState] = useState("idle");
+  const [poolError, setPoolError] = useState("");
   const poolSlow = useSlowFlag(poolState === "loading");
 
   const [mode, setMode] = useState(MODES.PRACTICE);
@@ -103,6 +106,7 @@ function QuizSetup() {
 
   const loadMeta = async () => {
     setMetaState("loading");
+    setMetaError("");
 
     try {
       const res = await axios.get(`${API}/api/questions/meta`);
@@ -111,6 +115,13 @@ function QuizSetup() {
       setMetaState("ready");
     } catch (error) {
       console.error(error);
+
+      setMetaError(
+        messageForError(
+          error,
+          "The setup wizard could not load the topic list from the server."
+        )
+      );
 
       setMetaState("error");
     }
@@ -168,6 +179,7 @@ function QuizSetup() {
       // that cannot be started.
 
       setPoolState("loading");
+      setPoolError("");
 
       fetchPool(entry.topic)
         .then((data) => {
@@ -176,6 +188,13 @@ function QuizSetup() {
         })
         .catch((error) => {
           console.error(error);
+
+          setPoolError(
+            messageForError(
+              error,
+              `Could not count the questions for ${entry.topic}.`
+            )
+          );
 
           setPool(null);
           setPoolState("error");
@@ -214,12 +233,17 @@ function QuizSetup() {
     setTopic(value);
     setPool(null);
     setPoolState("loading");
+    setPoolError("");
 
     try {
       setPool(await fetchPool(value));
       setPoolState("ready");
     } catch (error) {
       console.error(error);
+
+      setPoolError(
+        messageForError(error, `Could not count the questions for ${value}.`)
+      );
 
       setPool(null);
       setPoolState("error");
@@ -329,10 +353,11 @@ function QuizSetup() {
             </h3>
 
             <p className="card-desc">
-              The setup wizard needs the list of topics from the
-              server, and the request failed. This is usually a
-              dropped connection or a backend that is still
-              starting. Nothing you entered has been lost.
+              {metaError ||
+                "The setup wizard needs the list of topics from the server, " +
+                  "and the request failed. This is usually a dropped " +
+                  "connection or a backend that is still starting. Nothing " +
+                  "you entered has been lost."}
             </p>
 
             <button className="btn btn-primary" onClick={loadMeta}>
@@ -497,9 +522,13 @@ function QuizSetup() {
                 <FiAlertTriangle aria-hidden="true" />
 
                 <span>
-                  Could not count the questions for{" "}
-                  <strong>{topic}</strong>. Check your connection
-                  and try again.
+                  {poolError || (
+                    <>
+                      Could not count the questions for{" "}
+                      <strong>{topic}</strong>. Check your connection
+                      and try again.
+                    </>
+                  )}
                 </span>
 
                 <button

@@ -25,6 +25,7 @@ import {
   getAdminAuth,
   handleAdminError,
 } from "../utils/adminAuth";
+import { messageForError } from "../utils/apiError";
 import useSlowFlag from "../utils/useSlowFlag";
 import {
   CHART,
@@ -110,8 +111,7 @@ function AdminStats() {
       console.error(error);
 
       setErrorMessage(
-        error.response?.data?.message ||
-          "The analytics service did not respond."
+        messageForError(error, "The analytics service did not respond.")
       );
 
       setState("error");
